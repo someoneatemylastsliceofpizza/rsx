@@ -314,8 +314,6 @@ public:
 
 	const bool ParseFile(const std::string& path);
 
-	const std::string& GetFilePath() const { return m_filePath; }
-
 	// the base name for the bank is always at the start of the string table
 	const char* GetBankStem() const { return stringTable; };
 
@@ -339,8 +337,6 @@ private:
 	// the corresponding patch stream files exist.
 	std::map<uint16_t, uint32_t> m_localisedStreamStates;
 	uint32_t m_streamStates;
-
-	std::string m_filePath;
 
 	std::shared_ptr<char[]> m_fileBuf;
 

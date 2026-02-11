@@ -9,7 +9,7 @@ void LoadMapAsset(CAssetContainer* container, CAsset* asset)
     CPakFile* const pak = static_cast<CPakFile* const>(container);
     CPakAsset* const pakAsset = static_cast<CPakAsset* const>(asset);
 
-    std::string assetName = "map/" + pak->getPakStem() + ".rmap";
+    const std::string assetName = "map/" + pak->getPakStem() + ".rmap";
     const uint64_t guidFromString = RTech::StringToGuid(assetName.c_str());
 
     if (guidFromString == asset->GetAssetGUID())

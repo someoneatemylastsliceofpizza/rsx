@@ -399,6 +399,7 @@ void SettingsAsset::R_WriteModValues(std::string& out, const SettingsLayoutAsset
 		}
 		else
 		{
+			assert(0);
 			out += "// FAILURE( !!! SETTINGS FIELD NOT FOUND !!! )\n";
 		}
 

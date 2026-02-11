@@ -2,9 +2,10 @@
 #include <core/crashhandler.h>
 
 #include <thirdparty/imgui/imgui.h>
-#include <thirdparty/imgui/misc/imgui_utility.h>
 #include <thirdparty/imgui/backends/imgui_impl_win32.h>
 #include <thirdparty/imgui/backends/imgui_impl_dx11.h>
+
+#include <thirdparty/imgui/misc/imgui_utility.h>
 
 #include <core/render/dx.h>
 #include <core/input/input.h>
@@ -67,7 +68,8 @@ static void HandleAssetRegistration(const CCommandLine* const cli)
     
     // ui
     extern void InitUIAssetType();
-    // hsys
+
+    // rlcd
     extern void InitLcdScreenEffectAssetType();
     extern void InitRTKAssetType();
     
@@ -115,6 +117,7 @@ static void HandleAssetRegistration(const CCommandLine* const cli)
     // texture/material
     InitMaterialAssetType();
     InitMaterialSnapshotAssetType();
+
     // mt4a
     InitTextureAssetType();
     InitTextureAnimationAssetType();
@@ -205,7 +208,12 @@ void CreateConsole()
 int main(int argc, char* argv[])
 {
     CCommandLine cli(argc, argv);
+
+#if defined(BUILD_NOGUI)
+    constexpr bool noGui = true;
+#else
     const bool noGui = cli.HasParam("-nogui");
+#endif
 
 #if defined(NDEBUG) && defined(_WIN32)
     if (noGui)
@@ -213,7 +221,7 @@ int main(int argc, char* argv[])
 #endif
 
     // we want the visual studio debugger to be able to control the working directory
-#if defined(NDEBUG)
+#if defined(NDEBUG) && !defined(BUILD_NOGUI)
     // this is needed to properly support drag'n'drop, it changes the current working directory to the file you drag into the exe
     // HOWEVER: this should not apply when nogui is specified, as it is expected that shorter, relative file paths can be used when running CLI
     if (!noGui && !RestoreCurrentWorkingDirectory())
@@ -257,6 +265,7 @@ int main(int argc, char* argv[])
         DrawSplashScreen(); // draw splashscreen now for 2~ seconds
 #endif // #if defined(SPLASHSCREEN)
 
+#if !defined(BUILD_NOGUI)
     if (!noGui)
     {
         const HWND windowHandle = SetupWindow();
@@ -289,7 +298,9 @@ int main(int argc, char* argv[])
         ImGui_ImplWin32_Init(windowHandle);
         ImGui_ImplDX11_Init(g_dxHandler->GetDevice(), g_dxHandler->GetDeviceContext());
     }
-    else {
+    else
+#endif
+    {
         g_dxHandler = new CDXParentHandler(NULL);
 
         g_pImGuiHandler->SetNoImGui(true);
@@ -306,6 +317,7 @@ int main(int argc, char* argv[])
     // call after initializing dx and gui otherwise you will crash
     HandleLoadFromCommandLine(&cli);
 
+#if !defined(BUILD_NOGUI)
     if (!noGui)
     {
         bool quit = false;
@@ -326,15 +338,18 @@ int main(int argc, char* argv[])
             HandleRenderFrame();
         }
     }
+#endif
 
     g_cacheDBManager.SaveToFile((std::filesystem::current_path() / "rsx_cache_db.bin").string());
 
+#if !defined(BUILD_NOGUI)
     if (!noGui)
     {
         ImGui_ImplDX11_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
     }
+#endif
 
     delete g_dxHandler;
 

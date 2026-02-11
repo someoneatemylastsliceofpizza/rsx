@@ -38,6 +38,8 @@ static const char* D3D11_BLEND_OP_NAMES[] = {
     "D3D11_BLEND_OP_MAX",
 };
 
+bool GenerateTexture2D(const uint32_t pixel, const uint8_t pixelSize, DXGI_FORMAT format, UINT width, UINT height, UINT arraySize, UINT bindFlags, bool isCube, ID3D11Texture2D** o_texture2d, ID3D11ShaderResourceView** o_srv);
+
 class CDXDrawData;
 class CPreviewDrawData
 {

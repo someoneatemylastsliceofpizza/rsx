@@ -234,7 +234,7 @@ void CBSPData::CreateOrUpdatePreviewStructuredBuffers()
 			assert(SUCCEEDED(hr));
 
 			if (SUCCEEDED(hr))
-				m_drawData->vertexShaderResources.push_back({ 0, m_vertPositionsSRV });
+				m_drawData->vertexShaderResources[0] = m_vertPositionsSRV;
 		}
 
 		if (CreateD3DBuffer(g_dxHandler->GetDevice(),
@@ -254,7 +254,7 @@ void CBSPData::CreateOrUpdatePreviewStructuredBuffers()
 			assert(SUCCEEDED(hr));
 
 			if (SUCCEEDED(hr))
-				m_drawData->vertexShaderResources.push_back({ 1, m_vertNormalsSRV });
+				m_drawData->vertexShaderResources[1] = m_vertNormalsSRV;
 		}
 	}
 

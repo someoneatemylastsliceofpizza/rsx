@@ -116,7 +116,7 @@ void ItemflavWindow_RefreshData(CUIState* uiState)
         else
         {
             // Full pak path for the localization_english.rpak file in the same directory as common.rpak
-            const std::filesystem::path fullPakPath = reinterpret_cast<CPakFile*>(reinterpret_cast<CPakAsset*>(uiState->itemFlavorListAsset)->GetContainerFile())->getFilePath().parent_path() / "localization_english.rpak";
+            const std::filesystem::path fullPakPath = reinterpret_cast<CPakFile*>(reinterpret_cast<CPakAsset*>(uiState->itemFlavorListAsset)->GetContainerFile())->GetFilePath().parent_path() / "localization_english.rpak";
 
             extern void HandlePakLoad(std::vector<std::string> filePaths);
 

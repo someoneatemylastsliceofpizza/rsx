@@ -12,11 +12,12 @@ extern ExportSettings_t g_ExportSettings;
 
 bool CBluepointPakfile::ParseFromFile()
 {
-	if (m_filePath.empty())
+	const std::filesystem::path& filePath = GetFilePath();
+	if (filePath.empty())
 		return false;
 
-	StreamIO in(m_filePath, eStreamIOMode::Read);
-	size_t fileSize = std::filesystem::file_size(m_filePath);
+	StreamIO in(filePath, eStreamIOMode::Read);
+	size_t fileSize = std::filesystem::file_size(filePath);
 
 	m_Buf = std::make_shared<char[]>(fileSize);
 	in.R()->read(m_Buf.get(), fileSize);

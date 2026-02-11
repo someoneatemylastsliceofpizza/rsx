@@ -72,11 +72,11 @@ void PostLoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 
 	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 
-	AnimSeqAsset* const seqAsset = pakAsset->extraData<AnimSeqAsset*>();
-	if (!seqAsset)
+	if (!pakAsset->hasExtraData())
 		return;
 
 #ifndef DEBUG_NO_ASEQ_POSTLOAD
+	AnimSeqAsset* const seqAsset = pakAsset->extraData<AnimSeqAsset*>();
 	// do not parse this animation if there is no skeleton, if we go to export a sequence from a model/rig that has not been parsed, we will have to parse on export.
 	// this also means this sequence will not export data when exported standalone
 	if (nullptr == seqAsset->parentRig && nullptr == seqAsset->parentModel)

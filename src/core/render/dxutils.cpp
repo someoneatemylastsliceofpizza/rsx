@@ -44,6 +44,94 @@ bool CreateD3DBuffer(
     return SUCCEEDED(hr);
 }
 
+bool GenerateTexture2D(uint32_t pixel, const uint8_t pixelSize, DXGI_FORMAT format, UINT width, UINT height, UINT arraySize, UINT bindFlags, bool isCube, ID3D11Texture2D** o_texture2d, ID3D11ShaderResourceView** o_srv)
+{
+    char* pixelDataPerImage = new char[width * height * pixelSize];
+
+    // If the pixel data is zero, just use memset
+    if (pixel == 0)
+        memset(pixelDataPerImage, 0, width * height * pixelSize);
+    else
+    {
+        // Loop over the whole pixel buffer and copy our value into it
+        for (size_t i = 0; i < width * height; ++i)
+        {
+            memcpy(&pixelDataPerImage[i * pixelSize], &pixel, pixelSize);
+        }
+    }
+
+
+    D3D11_TEXTURE2D_DESC textureDesc;
+    textureDesc.Height = height;
+    textureDesc.Width = width;
+    textureDesc.MipLevels = 1;
+    textureDesc.ArraySize = isCube ? 6 * arraySize : arraySize;
+    textureDesc.Format = format;
+    textureDesc.SampleDesc.Count = 1;
+    textureDesc.SampleDesc.Quality = 0;
+    textureDesc.Usage = D3D11_USAGE_IMMUTABLE;
+    textureDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE | bindFlags;
+    textureDesc.CPUAccessFlags = 0;
+    textureDesc.MiscFlags = isCube ? D3D11_RESOURCE_MISC_TEXTURECUBE : 0;
+
+    D3D11_SUBRESOURCE_DATA* subData = new D3D11_SUBRESOURCE_DATA[textureDesc.ArraySize];
+
+    for (UINT i = 0; i < textureDesc.ArraySize; i++) {
+
+        subData[i].pSysMem = pixelDataPerImage;
+        subData[i].SysMemPitch = (UINT)(width * pixelSize);
+        subData[i].SysMemSlicePitch = 0;
+    }
+
+    // Create the empty texture.
+    HRESULT hr = g_dxHandler->GetDevice()->CreateTexture2D(&textureDesc, (D3D11_SUBRESOURCE_DATA*)subData, o_texture2d);
+    if (FAILED(hr))
+        return false;
+
+    delete[] pixelDataPerImage;
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc{};
+
+    // this is bad!
+    if (format == DXGI_FORMAT_R24G8_TYPELESS) format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+    if (format == DXGI_FORMAT_R16_TYPELESS) format = DXGI_FORMAT_R16_UNORM;
+
+    srvDesc.Format = format;
+    if (!isCube)
+    {
+        srvDesc.ViewDimension = arraySize == 1 ? D3D11_SRV_DIMENSION_TEXTURE2D : D3D11_SRV_DIMENSION_TEXTURE2DARRAY;
+        
+        if (arraySize == 1)
+        {
+            srvDesc.Texture2D.MostDetailedMip = 0;
+            srvDesc.Texture2D.MipLevels = 1;
+        }
+        else
+        {
+            srvDesc.Texture2DArray.ArraySize = arraySize;
+            srvDesc.Texture2DArray.FirstArraySlice = 0;
+            srvDesc.Texture2DArray.MostDetailedMip = 0;
+            srvDesc.Texture2DArray.MipLevels = 1;
+        }
+    }
+    else
+    {
+        srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBEARRAY;
+
+        srvDesc.TextureCubeArray.First2DArrayFace = 0;
+        srvDesc.TextureCubeArray.MipLevels = 1;
+        srvDesc.TextureCubeArray.MostDetailedMip = 0;
+        srvDesc.TextureCubeArray.NumCubes = arraySize;
+        
+    }
+
+    hr = g_dxHandler->GetDevice()->CreateShaderResourceView(*o_texture2d, &srvDesc, o_srv);
+    if (FAILED(hr))
+        return false;
+
+    return true;
+}
+
 CPreviewDrawData::~CPreviewDrawData()
 {
     FreeDrawData();

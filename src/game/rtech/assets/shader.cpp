@@ -43,6 +43,7 @@ void LoadShaderAsset(CAssetContainer* pak, CAsset* asset)
 	}
 	case 15:
 	case 16:
+	case 17:
 	{
 		// [rika]: switch headerStructSize == 48, switch shaders in general are very odd
 		assertm(pakAsset->data()->headerStructSize == sizeof(ShaderAssetHeader_v15_t), "incorrect header");
@@ -90,7 +91,8 @@ void LoadShaderAsset(CAssetContainer* pak, CAsset* asset)
 			name += ".rpak";
 
 		pakAsset->SetAssetName(name, true);
-	}
+	} else
+		pakAsset->SetAssetNameFromCache();
 
 	pakAsset->setExtraData(shaderAsset);
 }
@@ -457,19 +459,14 @@ void PostLoadShaderAsset(CAssetContainer* const pak, CAsset* const asset)
 	}
 	}
 
-	if(shaderAsset->type == eShaderType::Vertex)
+	if(shaderAsset->type == eShaderType::Vertex && shaderAsset->inputFlags)
 		shaderAsset->vertexInputLayout = Shader_CreateInputLayoutFromFlags(shaderAsset->inputFlags[0], shaderAsset->data, shaderAsset->dataSize);
 
 	if (FAILED(hr))
 	{
-		Log("failed to create %s shader for asset %s (0x%08X)\n", GetShaderTypeName(shaderAsset->type), asset->name().c_str(), hr);
+		Log("failed to create %s shader for asset %s (0x%08X)\n", GetShaderTypeName(shaderAsset->type), asset->GetAssetName().c_str(), hr);
 	}
 #endif
-
-	if(!shaderAsset->name)
-	{
-		pakAsset->SetAssetNameFromCache();
-	}
 }
 
 void* PreviewShaderAsset(CAsset* const asset, const bool firstFrameForAsset)
@@ -666,6 +663,11 @@ static const char* const s_PathPrefixSHDR = s_AssetTypePaths.find(AssetType_t::S
 bool ExportShaderAsset(CAsset* const asset, const int setting)
 {
 	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
+
+	// [rexx]: SHDR v17 is temporarily disabled for export since it seems to be a little bit messed up
+	if (pakAsset->version() == 17)
+		return false;
+
 
 	const ShaderAsset* const shaderAsset = pakAsset->extraData<const ShaderAsset* const>();
 	assertm(shaderAsset, "Extra asset data should be valid at this point.");

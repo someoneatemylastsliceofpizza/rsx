@@ -73,6 +73,8 @@ void LoadShaderSetAsset(CAssetContainer* const pak, CAsset* const asset)
 
 		pakAsset->SetAssetName(name, true);
 	}
+	else
+		pakAsset->SetAssetNameFromCache();
 
 	pakAsset->setExtraData(shdsAsset);
 }
@@ -99,11 +101,6 @@ void PostLoadShaderSetAsset(CAssetContainer* const pak, CAsset* const asset)
 
 	shdsAsset->vertexShaderAsset = g_assetData.FindAssetByGUID<CPakAsset>(shdsAsset->vertexShader);
 	shdsAsset->pixelShaderAsset = g_assetData.FindAssetByGUID<CPakAsset>(shdsAsset->pixelShader);
-
-	if(!shdsAsset->name)
-	{
-		pakAsset->SetAssetNameFromCache();
-	}
 }
 
 void* PreviewShaderSetAsset(CAsset* const asset, const bool firstFrameForAsset)

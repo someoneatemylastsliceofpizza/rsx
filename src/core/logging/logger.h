@@ -2,7 +2,7 @@
 #include <cstdarg>
 #include <stdio.h>
 
-#if _DEBUG
+#if defined(_DEBUG) || defined(BUILD_NOGUI)
 inline void Log(const char* fmt, ...)
 {
 	va_list args;

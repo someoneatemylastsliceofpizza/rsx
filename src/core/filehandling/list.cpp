@@ -31,6 +31,41 @@ void ExportAssetListTXTToFileStream(std::vector<CGlobalAssetData::AssetLookup_t>
     }
 }
 
+void ExportDependenciesToFileStream_AdjList(std::vector<CGlobalAssetData::AssetLookup_t>* assets, std::ofstream* ofs)
+{
+    Log("DEPS: Writing dependencies as an adjacency list for %lld assets\n", assets->size());
+    for (size_t i = 0; i < assets->size(); ++i)
+    {
+        const CGlobalAssetData::AssetLookup_t& it = assets->at(i);
+
+        // For now this is only usable on rpaks
+        if (it.m_asset->GetAssetContainerType() == CAssetContainer::ContainerType::PAK)
+        {
+            *ofs << it.m_asset->GetAssetName();
+
+            CPakAsset* pakAsset = reinterpret_cast<CPakAsset*>(it.m_asset);
+
+            std::vector<AssetGuid_t> dependencies;
+            pakAsset->getDependencies(dependencies);
+
+            for (size_t depIdx = 0; depIdx < dependencies.size(); ++depIdx)
+            {
+                const AssetGuid_t depGuid = dependencies[depIdx];
+
+                CAsset* depAsset = g_assetData.FindAssetByGUID<CPakAsset>(depGuid.guid);
+
+                if (depAsset)
+                    *ofs << "," << depAsset->GetAssetName();
+                else
+                    *ofs << "," << std::format("{:016X}*", depGuid.guid);
+            }
+        }
+
+        if (i != assets->size() - 1)
+            *ofs << "\n";
+    }
+}
+
 void HandleListExportPakAssets(const HWND handle, std::vector<CGlobalAssetData::AssetLookup_t>* assets)
 {
     std::vector<std::string> assetNames(assets->size());

@@ -660,6 +660,24 @@ struct TextureAssetEntry_t
 #define MATERIALCF_SOUND_TRIGGER                 (1 << 26) // 0x4000000
 #define MATERIALCF_NO_AIRDROP                    (1 << 27) // 0x8000000
 
+struct DoFParams
+{
+	float nearDepthEnd;
+	float3 unused3;
+	float4 worldParams;
+};
+
+struct CBufUberDynamic
+{
+	float c_vsmScale;
+	float c_glitchAberrationScale;
+	float c_rcpCloakAberrationScale;
+	float c_desaturate;
+	DoFParams c_dof;
+	uint32_t c_materialID;
+	float3 __padding_dyanmic;
+};
+
 class MaterialAsset
 {
 public:
@@ -783,6 +801,7 @@ public:
 	//
 
 	ID3D11Buffer* uberStaticBuffer;
+	ID3D11Buffer* uberDynamicBuffer;
 	void* cpuData;
 	int cpuDataSize;
 	std::vector<TmpConstBufVar> cpuDataBuf; // should this be done on export?

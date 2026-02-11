@@ -38,6 +38,9 @@ void PostLoadMaterialSnapshotAsset(CAssetContainer* const container, CAsset* con
 
     CPakAsset* const pakAsset = static_cast<CPakAsset*>(asset);
 
+    if (!pakAsset->hasExtraData())
+        return;
+
     MaterialSnapshotAsset* const snapshotAsset = pakAsset->extraData<MaterialSnapshotAsset* const>();
 
     CPakAsset* const shaderSetAsset = g_assetData.FindAssetByGUID<CPakAsset>(snapshotAsset->shaderSet);
@@ -53,6 +56,9 @@ void* PreviewMaterialSnapshotAsset(CAsset* const asset, const bool firstFrameFor
     UNUSED(firstFrameForAsset);
 
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
+
+    if (!pakAsset->hasExtraData())
+        return nullptr;
 
     const MaterialSnapshotAsset* const snapshotAsset = pakAsset->extraData<const MaterialSnapshotAsset* const>();
 

@@ -4,6 +4,9 @@
 #pragma once
 #include <string>
 #include <game/rtech/utils/utils.h>
+#include <filesystem>
+#include <iomanip>
+#include <time.h>
 
 extern ExportSettings_t g_ExportSettings;
 
@@ -241,6 +244,18 @@ struct AssetVersion_t
 	}
 };
 
+static const char* s_LogLevelNames[] = {
+	"INFO",
+	"WARNING",
+	"ERROR",
+};
+
+static uint32_t s_LogLevelColours[] = {
+	0xFFFFFFFF,
+	0xFFFF00FF,
+	0xFF0000FF,
+};
+
 struct ContainerMessage_t
 {
 	enum class MessageType_e : int8_t
@@ -251,13 +266,17 @@ struct ContainerMessage_t
 		MSG_ERROR,
 	};
 
-	ContainerMessage_t(MessageType_e _type, const char* _message) : type(_type), message(_message) {};
+	ContainerMessage_t(MessageType_e _type, const char* _sourceName, const char* _message) : type(_type), sourceName(_sourceName), message(_message) {};
 
 	~ContainerMessage_t()
 	{
-		delete[] message;
+		free((void*)timestampStr);
+		free((void*)sourceName);
+		free((void*)message);
 	}
 
+	const char* timestampStr;
+	const char* sourceName;
 	const char* message;
 	MessageType_e type;
 };
@@ -384,16 +403,19 @@ public:
 
 	virtual const ContainerType GetContainerType() const = 0;
 
-	void LoadMsg_Info(const char* msg)
+	void SetFilePath(const std::filesystem::path& filePath)
 	{
-		realloc(m_loadMessages, sizeof(ContainerMessage_t)*(m_numLoadMessages+1));
+		m_filePath = filePath;
+	}
 
-		m_loadMessages[m_numLoadMessages++] = ContainerMessage_t(ContainerMessage_t::MessageType_e::MSG_INFO, msg);
+	const std::filesystem::path& GetFilePath() const
+	{
+		return m_filePath;
 	}
 
 private:
-	ContainerMessage_t* m_loadMessages;
-	uint32_t m_numLoadMessages;
+	std::filesystem::path m_filePath;
+
 };
 
 // functions for asset loading.
@@ -450,6 +472,9 @@ public:
 
 	CAssetContainer* m_pakPatchMaster;
 
+	ContainerMessage_t* m_logMessages;
+	uint32_t m_numLogMessages;
+
 	bool m_donePostLoad;
 
 	void AddAssetPostLoadCallback(uint64_t guid, AssetLoadCallback_t callback)
@@ -505,6 +530,120 @@ public:
 	}
 
 	void ProcessAssetsPostLoad();
+
+
+
+#define GET_LOG_MSG_VARIADIC(args, returnVar, fmt) std::vector<char> buf(1+std::vsnprintf(NULL, 0, fmt, args)); \
+											   va_list args2; \
+                                               va_copy(args2, args); \
+											   va_end(args); \
+											   std::vsnprintf(buf.data(), buf.size(), fmt, args2); \
+											   va_end(args2); \
+											   returnVar = std::string(buf.begin(), buf.end())
+	// Logging functions
+	void Log_Info(const CAssetContainer* const container, const char* fmt, ...)
+	{
+		va_list args;
+		va_start(args, fmt);
+
+		std::string msg;
+		GET_LOG_MSG_VARIADIC(args, msg, fmt);
+
+		const std::string sourceName = container ? container->GetFilePath().filename().string() : "N/A";
+
+		Log("[%s] %s\n", sourceName.c_str(), msg.c_str());
+		LogMessages_Append(ContainerMessage_t::MessageType_e::MSG_INFO, sourceName, msg);
+	}
+
+	void Log_Warning(const CAssetContainer* const container, const char* fmt, ...)
+	{
+		va_list args;
+
+		va_start(args, fmt);
+		
+		std::string msg;
+		GET_LOG_MSG_VARIADIC(args, msg, fmt);
+
+		const std::string sourceName = container ? container->GetFilePath().filename().string() : "N/A";
+
+		Log("WARNING [%s]: %s\n", sourceName.c_str(), msg.c_str());
+
+		LogMessages_Append(ContainerMessage_t::MessageType_e::MSG_WARNING, sourceName, msg);
+	}
+
+	void Log_Error(const CAssetContainer* const container, const char* fmt, ...)
+	{
+		va_list args;
+		va_start(args, fmt);
+
+		std::string msg;
+		GET_LOG_MSG_VARIADIC(args, msg, fmt);
+
+		const std::string sourceName = container ? container->GetFilePath().filename().string() : "N/A";
+
+		Log("ERROR [%s]: %s\n", sourceName.c_str(), msg.c_str());
+
+		LogMessages_Append(ContainerMessage_t::MessageType_e::MSG_ERROR, sourceName, msg);
+	}
+
+	const ContainerMessage_t* GetLogMessages() const
+	{
+		return m_logMessages;
+	}
+
+	const uint32_t GetNumLogMessages() const
+	{
+		return m_numLogMessages;
+	}
+
+	void LogMessages_Append(ContainerMessage_t::MessageType_e type, const std::string& sourceName, const std::string& msg)
+	{
+		// If there's no log messages ptr, try and allocate a placeholder so we can write something into the array
+		if (!m_logMessages)
+			m_logMessages = reinterpret_cast<ContainerMessage_t*>(calloc(0, sizeof(ContainerMessage_t)));
+
+		// If there's still no log messages ptr just return since logs are not critical
+		if (!m_logMessages)
+			return;
+
+		m_logMessages = reinterpret_cast<ContainerMessage_t*>(realloc(m_logMessages, sizeof(ContainerMessage_t) * (m_numLogMessages + 1)));
+
+		const time_t t = std::time(nullptr);
+		tm tm;
+		if (localtime_s(&tm, &t))
+		{
+			assertm(0, "failed to get time");
+			return;
+		}
+
+		std::ostringstream oss;
+		oss << std::put_time(&tm, "%H:%M:%S");
+
+		ContainerMessage_t* m = &m_logMessages[m_numLogMessages];
+		m->type = type;
+		m->timestampStr = _strdup(oss.str().c_str());
+		m->message = _strdup(msg.c_str());
+		m->sourceName = _strdup(sourceName.c_str());
+
+		m_numLogMessages++;
+	}
+
+	void FreeLogMessages()
+	{
+		if (m_logMessages && m_numLogMessages > 0)
+		{
+			for (uint32_t i = 0; i < m_numLogMessages; ++i)
+			{
+				free((void*)m_logMessages->message);
+				free((void*)m_logMessages->message);
+			}
+
+			free(m_logMessages);
+
+			m_numLogMessages = 0;
+			m_logMessages = nullptr;
+		}
+	}
 };
 
 extern CGlobalAssetData g_assetData;

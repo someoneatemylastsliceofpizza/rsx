@@ -30,17 +30,8 @@ void LoadRSONAsset(CAssetContainer* const container, CAsset* const asset)
     rootNode.R_ParseNodeValues(out, 0); // store raw text so we can preview or export it
     rsonAsset->rawText = out.str();
 
-    pakAsset->setExtraData(rsonAsset);
-}
-
-void PostLoadRSONAsset(CAssetContainer* const container, CAsset* const asset)
-{
-	UNUSED(container);
-
-	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
-
-	// [rika]: has no name var
 	pakAsset->SetAssetNameFromCache();
+	pakAsset->setExtraData(rsonAsset);
 }
 
 void* PreviewRSONAsset(CAsset* const asset, const bool firstFrameForAsset)
@@ -289,7 +280,7 @@ void InitRSONAssetType()
 		.type = 'nosr',
 		.headerAlignment = 8,
 		.loadFunc = LoadRSONAsset,
-		.postLoadFunc = PostLoadRSONAsset,
+		.postLoadFunc = nullptr,
 		.previewFunc = PreviewRSONAsset,
 		.e = { ExportRSONAsset, 0, nullptr, 0ull },
 	};

@@ -35,6 +35,7 @@ static bool ExportLcdScreenEffectAsset(CAsset* const asset, const int setting)
 
     if (!set)
     {
+        g_assetData.Log_Warning((CAssetContainer*)pakAsset->GetContainerFile(), "Failed to export LCD Screen Effect for asset '%llX': Unsupported version", asset->GetAssetGUID());
         assert(0); // Unsupported rlcd version.
         return false;
     }

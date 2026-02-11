@@ -45,26 +45,10 @@ void LoadUIAsset(CAssetContainer* const container, CAsset* const asset)
         const std::string uiName = "ui/" + std::string(uiAsset->name) + ".rpak";
         pakAsset->SetAssetName(uiName, true);
     }
+    else
+        pakAsset->SetAssetNameFromCache();
 
     pakAsset->setExtraData(uiAsset);
-}
-
-void PostLoadUIAsset(CAssetContainer* const container, CAsset* const asset)
-{
-    UNUSED(container);
-
-    CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
-
-    // temp, remove once other versions are implemented
-    if (!pakAsset->hasExtraData())
-        return;
-
-    UIAsset* const uiAsset = reinterpret_cast<UIAsset*>(pakAsset->extraData());
-
-    if (!uiAsset->name)
-    {
-        pakAsset->SetAssetNameFromCache();
-    }
 }
 
 struct UIPreviewData_t
@@ -482,7 +466,7 @@ void InitUIAssetType()
         .type = '\0iu',
         .headerAlignment = 8,
         .loadFunc = LoadUIAsset,
-        .postLoadFunc = PostLoadUIAsset,
+        .postLoadFunc = nullptr,
         .previewFunc = PreviewUIAsset,
         .e = { ExportUIAsset, 0, settings, ARRAYSIZE(settings) },
     };

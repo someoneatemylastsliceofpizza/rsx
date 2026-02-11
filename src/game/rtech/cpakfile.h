@@ -659,7 +659,7 @@ public:
     const CAsset::ContainerType GetContainerType() const { return CAsset::ContainerType::PAK; };
 
     const bool ParseFileBuffer(const std::string& path);
-    static const bool DecompressFileBuffer(const char* fileBuffer, std::shared_ptr<char[]>* outBuffer);
+    const bool DecompressFileBuffer(const char* fileBuffer, std::shared_ptr<char[]>* outBuffer);
 
 #if defined(PAKLOAD_PATCHING_ANY)
 public:
@@ -674,8 +674,6 @@ public:
 #endif // #if defined(PAKLOAD_PATCHING_ANY)
 
 private:
-    std::string m_FilePath;
-
     PakHdr_t* m_pHeader;
 
     PakPatchDataHdr_t* m_pPatchDataHeader;
@@ -870,7 +868,7 @@ public:
 
     std::string getPakStem() const
     {
-        const std::string stem = std::filesystem::path(this->m_FilePath).stem().string();
+        const std::string stem = GetFilePath().stem().string();
 
         if (patchCount() == 0)
             return stem;
@@ -890,11 +888,6 @@ public:
         return pakStem;
     }
 //#endif // #if defined(PAKLOAD_PATCHING_ANY)
-
-    std::filesystem::path getFilePath() const
-    {
-        return m_FilePath;
-    }
 };
 
 #if defined(PAKLOAD_PATCHING_ANY)

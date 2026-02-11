@@ -6,7 +6,14 @@
 #include <game/rtech/patchapi.h>
 
 #include <game/rtech/utils/utils.h>
+
+#ifndef RTECH_STATIC_LIB
 #include <thirdparty/imgui/misc/imgui_utility.h>
+
+#define PARSE_THREAD_COUNT UtilsConfig->parseThreadCount
+#else
+#define PARSE_THREAD_COUNT 1
+#endif
 
 //CGlobalPakData g_pakData;
 
@@ -54,11 +61,11 @@ const bool CPakFile::ParseFileBuffer(const std::string& path)
 {
     // Make sure that the pak instance always holds an absolute file path
     if (!std::filesystem::path(path).is_absolute())
-        m_FilePath = std::filesystem::absolute(path).string();
+        SetFilePath(std::filesystem::absolute(path));
     else
-        m_FilePath = path;
+        SetFilePath(path);
 
-    if (!ParseFromFile(m_FilePath, this->m_Buf))
+    if (!ParseFromFile(GetFilePath().string(), this->m_Buf))
         return false;
 
     // parse our initial header (subject to change)
@@ -305,7 +312,7 @@ const bool CPakFile::LoadAndPatchPakFileData()
 {
     if (g_assetData.m_pakLoadStatusMap.count(header()->crc) != 0)
     {
-        Log("Pakfile '%s' failed to load because its CRC was already recorded as being loaded.\n", m_FilePath.c_str());
+        Log("Pakfile '%s' failed to load because its CRC was already recorded as being loaded.\n", GetFilePath().c_str());
 
         return false;
     }    
@@ -346,7 +353,7 @@ const bool CPakFile::LoadAndPatchPakFileData()
         const uint16_t pakPatchFileIndex = header()->GetPatchFileIndices()[i];
 
         const std::string patchSuffix = pakPatchFileIndex == 0 ? "" : std::format("({:02})", pakPatchFileIndex);
-        const std::filesystem::path patchFilePath = std::filesystem::path(this->m_FilePath).replace_filename(std::format("{}{}.rpak", this->getPakStem(), patchSuffix));
+        const std::filesystem::path patchFilePath = std::filesystem::path(GetFilePath()).replace_filename(std::format("{}{}.rpak", this->getPakStem(), patchSuffix));
 
         PakFileLoadState_t loadState = {};
         if (!ParseFromFile(patchFilePath.string(), loadState.fileBuffer))
@@ -393,7 +400,7 @@ const bool CPakFile::LoadAndPatchPakFileData()
     CreateHeaderSegmentCollection();
     if (!AllocateSegments())
     {
-        Log("PAKLOAD ERROR: Failed segment allocation.\n");
+        g_assetData.Log_Error(this, "Failed segment allocation");
         return false;
     }
 
@@ -525,13 +532,13 @@ const bool CPakFile::ParseStreamedFile(const std::string& fileName, bool opt)
     };
     std::unique_ptr<StarPak_t> pakEntry = std::make_unique<StarPak_t>();
 
-    std::string path = std::filesystem::path(m_FilePath).parent_path().string().append("\\" + fileName);
+    std::string path = std::filesystem::path(GetFilePath()).parent_path().string().append("\\" + fileName);
     pakEntry.get()->filePath = path;
 
     StreamIO file;
     if (!file.open(path, eStreamIOMode::Read))
     {
-        Log("LOAD: Failed to find starpak file '%s' on disk. Assets may be missing data.\n", fileName.c_str());
+        g_assetData.Log_Warning(this, "Failed to find StarPak file \"%s\" on disk. Assets may be missing data", fileName.c_str());
         return false;
     }
 
@@ -579,6 +586,7 @@ const bool CPakFile::DecompressFileBuffer(const char* fileBuffer, std::shared_pt
 
     if (header->magic != pakFileMagic)
     {
+        g_assetData.Log_Error(this, "Invalid pak magic (expected %08X, got %08X)", pakFileMagic, header->magic);
         delete header;
         return false;
     }
@@ -614,6 +622,7 @@ const bool CPakFile::DecompressFileBuffer(const char* fileBuffer, std::shared_pt
         }
         else
         {
+            g_assetData.Log_Error(this, "Failed to decompress pak file");
             delete header;
             return false;
         }
@@ -666,7 +675,7 @@ const bool CPakFile::DecompressFileBuffer(const char* fileBuffer, std::shared_pt
     }
     else if (header->flags & PAK_HEADER_FLAGS_ZSTD_ENCODED)
     {
-        assertm(false, "zstd compression unsupported");
+        g_assetData.Log_Error(this, "Pak file used unsupported ZSTD compression. RSX does not support this compression");
 
         delete header;
         return false;
@@ -811,16 +820,12 @@ bool CPakFile::AllocateSegments()
 
         if (actualSegmentAlignmentPadding < segmentRequiredAlignmentPadding[i])
         {
-            const std::string pakStem = this->getPakStem();
-            Log("PAKLOAD WARNING: Pak file '%s' has allocated segment buffers that are too small to store all pages and their padding for segment %i. This may cause a buffer overflow. (required padding size %lld, got %lld)\n", pakStem.c_str(), i, segmentRequiredAlignmentPadding[i], actualSegmentAlignmentPadding);
+            g_assetData.Log_Warning(this, "Tried to allocate a segment buffer for segment %i that was too small (required padding size %lld, got %lld)", i, segmentRequiredAlignmentPadding[i], actualSegmentAlignmentPadding);
             
             return false;
         }
         else if (actualSegmentAlignmentPadding > segmentRequiredAlignmentPadding[i])
-        {
-            const std::string pakStem = this->getPakStem();
-            Log("PAKLOAD WARNING: Pak file '%s' has allocated segment buffers that are larger than required for segment %i. This is likely due to it being a custom pak made with a buggy version of RePak (required padding size %lld, got %lld)\n", pakStem.c_str(), i, segmentRequiredAlignmentPadding[i], actualSegmentAlignmentPadding);
-        }
+            g_assetData.Log_Warning(this, "Pak allocated segment buffers that are larger than required for segment %i. This is likely due to it being a custom pak made with a buggy version of RePak (required padding size %lld, got %lld)", i, segmentRequiredAlignmentPadding[i], actualSegmentAlignmentPadding);
     }
 
     return true;
@@ -1048,8 +1053,7 @@ void CPakFile::HandleOwnPostLoad()
     }
 
     // we only want half of the available threads.
-    const uint32_t threadCount = UtilsConfig->parseThreadCount;
-    CParallelTask parallelTask(threadCount);
+    CParallelTask parallelTask(PARSE_THREAD_COUNT);
 
     std::atomic<uint32_t> assetIdx = 0;
     for (const auto& range : typeRanges)
@@ -1088,13 +1092,17 @@ void CPakFile::HandleOwnPostLoad()
                         }
                     }
 
-                }, threadCount);
+                }, PARSE_THREAD_COUNT);
 
+#ifndef RTECH_STATIC_LIB
             std::string eventName = std::format("Processing Assets Prioritized Post Load.. ({})", fourCCToString(it->first)).c_str();
             const ProgressBarEvent_t* const processingAssetsEvent = g_pImGuiHandler->AddProgressBarEvent(eventName.c_str(), static_cast<uint32_t>(range.end + 1), &assetIdx, true);
+#endif
             parallelTask.execute();
             parallelTask.wait();
+#ifndef RTECH_STATIC_LIB
             g_pImGuiHandler->FinishProgressBarEvent(processingAssetsEvent);
+#endif
         }
     }
 
@@ -1135,21 +1143,25 @@ void CPakFile::HandleOwnPostLoad()
                         }
                     }
                 }
-            }, threadCount);
+            }, PARSE_THREAD_COUNT);
 
+#ifndef RTECH_STATIC_LIB
         const ProgressBarEvent_t* const processingAssetsEvent = g_pImGuiHandler->AddProgressBarEvent("Processing Assets Post Load..", leftOverAssets, &assetIdx, true);
+#endif
         parallelTask.execute();
         parallelTask.wait();
+
+#ifndef RTECH_STATIC_LIB
         g_pImGuiHandler->FinishProgressBarEvent(processingAssetsEvent);
+#endif
     }
 }
 
 void CPakFile::ProcessAssets()
 {
     // prepare the parallel task with max threads to be used.
-    const uint32_t threadCount = UtilsConfig->parseThreadCount;
-    CParallelTask parallelLoadTask(threadCount);
-    CParallelTask parallelProcessTask(threadCount);
+    CParallelTask parallelLoadTask(PARSE_THREAD_COUNT);
+    CParallelTask parallelProcessTask(PARSE_THREAD_COUNT);
 
     std::mutex assetMutex;
 
@@ -1190,24 +1202,29 @@ void CPakFile::ProcessAssets()
             g_assetData.v_assets.push_back({ pAsset->guid, asset });
             m_pAssetsProcessed.push_back(asset);
         }
-    }, threadCount);
+    }, PARSE_THREAD_COUNT);
 
     auto fnRemainingTasks = PB_FNCLASS_TO_VOID(&CParallelTask::getRemainingTasks);
 
+#ifndef RTECH_STATIC_LIB
     const ProgressBarEvent_t* processingAssetsEvent = nullptr;
 
     // Only do the Preparing Assets progress bar if there are more than 100 assets
     // as this gives a reasonable chance of the progress bar actually showing up instead of just flashing
     if(assetCount() >= 100)
         processingAssetsEvent = g_pImGuiHandler->AddProgressBarEvent("Preparing Assets...", static_cast<uint32_t>(assetCount()), &assetIdx, true);
+#endif
 
     parallelProcessTask.execute();
     parallelProcessTask.wait();
 
+#ifndef RTECH_STATIC_LIB
     if(processingAssetsEvent)
         g_pImGuiHandler->FinishProgressBarEvent(processingAssetsEvent);
 
     const ProgressBarEvent_t* const loadAssetsEvent = g_pImGuiHandler->AddProgressBarEvent("Processing Assets...", parallelLoadTask.getRemainingTasks(), &parallelLoadTask, fnRemainingTasks, nullptr);
+#endif
+
     parallelLoadTask.execute();
 
     // we pre-sort each pak for post load callbacks by certain priority order.
@@ -1234,9 +1251,12 @@ void CPakFile::ProcessAssets()
     });
 
     parallelLoadTask.wait();
+
+#ifndef RTECH_STATIC_LIB
     g_pImGuiHandler->FinishProgressBarEvent(loadAssetsEvent);
 
     // If the global asset data has already done post-loading, then this pak is an ODL pak and must handle its own asset post-loading
     if (g_assetData.m_donePostLoad)
         HandleOwnPostLoad();
+#endif
 }

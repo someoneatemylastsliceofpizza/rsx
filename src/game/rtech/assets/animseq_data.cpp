@@ -35,6 +35,9 @@ bool ExportAnimSeqDataAsset(CAsset* const asset, const int setting)
 
 	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 
+	if (!pakAsset->hasExtraData())
+		return false;
+
 	const AnimSeqDataAsset* const animSeqDataAsset = pakAsset->extraData<const AnimSeqDataAsset* const>();
 
 	if (animSeqDataAsset->dataSize == 0)

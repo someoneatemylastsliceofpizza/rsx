@@ -62,6 +62,7 @@ class CUIState
 public:
 	inline void ShowSettingsWindow(bool state) { settingsWindowVisible = state; };
 	inline void ShowItemflavWindow(bool state) { itemflavWindowVisible = state; };
+	inline void ShowLogWindow(bool state) { logWindowVisible = state; };
 
 	inline void ClearAssetData()
 	{
@@ -72,8 +73,8 @@ public:
 
 public:
 	bool settingsWindowVisible;
-
 	bool itemflavWindowVisible;
+	bool logWindowVisible;
 
 	void* itemFlavorListAsset;
 

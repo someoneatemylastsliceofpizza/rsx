@@ -9,7 +9,6 @@ void LoadImpactAsset(CAssetContainer* const pak, CAsset* const asset)
     UNUSED(asset);
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 
-
     const WepnAssetHeader_v1_t* const header = reinterpret_cast<const WepnAssetHeader_v1_t* const>(pakAsset->header());
 
     const std::string assetName = "impact/" + std::string(header->weaponName) + ".rpak";

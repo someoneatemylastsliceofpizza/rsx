@@ -51,6 +51,7 @@ public:
 
 		KEY_LSHIFT = VK_LSHIFT,
 		KEY_CONTROL = VK_CONTROL,
+		KEY_HOME = VK_HOME,
 	};
 
 	enum class MouseButton_t

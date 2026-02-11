@@ -5,7 +5,7 @@ class CSourceModelSource : public CAssetContainer
 {
 public:
     CSourceModelSource() {};
-    ~CSourceModelSource() = default;
+	~CSourceModelSource() = default;
 
     const CAsset::ContainerType GetContainerType() const
     {
@@ -13,12 +13,9 @@ public:
     }
 
     void SetFileName(const char* fileName) { m_fileName = fileName; }
-	void SetFilePath(const std::filesystem::path& path) { m_filePath = path; }
     const char* const GetFileName() const { return m_fileName; }
-	const std::filesystem::path& GetFilePath() const { return m_filePath; }
 
 private:
-	std::filesystem::path m_filePath;
     const char* m_fileName;
 };
 

@@ -1,4 +1,9 @@
 #pragma once
+
+//#define _CRTDBG_MAP_ALLOC
+//#include <stdlib.h>
+//#include <crtdbg.h>
+
 #include <tchar.h>
 #include <assert.h>
 #include <cstdint>
@@ -115,4 +120,3 @@
 //#define XB_XECRPYT
 //#define XB_XCOMPRESS
 #define SWITCH_SWIZZLE
-//#define ADVANCED_MODEL_PREVIEW

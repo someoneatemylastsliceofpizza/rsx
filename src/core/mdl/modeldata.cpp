@@ -8,6 +8,7 @@
 //#include <core/render/dx.h>
 //#include <thirdparty/imgui/imgui.h>
 #include <thirdparty/imgui/misc/imgui_utility.h>
+#include <core/render/preview/preview.h>
 
 extern CDXParentHandler* g_dxHandler;
 extern CBufferManager g_BufferManager;
@@ -450,7 +451,11 @@ void ParseModelDrawData(ModelParsedData_t* const parsedData, CDXDrawData* const 
 		meshDrawData->doFrustumCulling = false;
 
 		if (mesh.materialAsset)
-			meshDrawData->uberStaticBuf = mesh.GetMaterialAsset()->uberStaticBuffer;
+		{
+			MaterialAsset* matl = mesh.GetMaterialAsset();
+			meshDrawData->uberStaticBuf = matl->uberStaticBuffer;
+			meshDrawData->uberDynamicBuf = matl->uberDynamicBuffer;
+		}
 
 		assertm(mesh.meshVertexDataIndex != invalidNoodleIdx, "mesh data hasn't been parsed ??");
 
@@ -459,10 +464,10 @@ void ParseModelDrawData(ModelParsedData_t* const parsedData, CDXDrawData* const 
 
 		if (!meshDrawData->vertexBuffer)
 		{
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if 0//defined(ADVANCED_MODEL_PREVIEW)
 			const UINT vertStride = mesh.vertCacheSize;
 #else
-			const UINT vertStride = sizeof(Vertex_t);
+			constexpr UINT vertStride = sizeof(Vertex_t);
 #endif
 
 			D3D11_BUFFER_DESC desc = {};
@@ -473,7 +478,7 @@ void ParseModelDrawData(ModelParsedData_t* const parsedData, CDXDrawData* const 
 			desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 			desc.MiscFlags = 0;
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if 0//defined(ADVANCED_MODEL_PREVIEW)
 			const void* vertexData = mesh.rawVertexData;
 #else
 			const void* vertexData = parsedVertexData->GetVertices();
@@ -486,7 +491,7 @@ void ParseModelDrawData(ModelParsedData_t* const parsedData, CDXDrawData* const 
 
 			meshDrawData->vertexStride = vertStride;
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if 0//defined(ADVANCED_MODEL_PREVIEW)
 			delete[] mesh.rawVertexData;
 #endif
 		}
@@ -1854,6 +1859,14 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		}
 	}
 
+	// Load these first so we don't have to look them up for every mesh.
+#if defined(ADVANCED_MODEL_PREVIEW)
+	const CShader* const vertexShader = g_dxHandler->GetShaderManager()->LoadShader("C:/p4/rtech_utils_imgui/src/shaders/amp_vs", eShaderType::Vertex);
+#else
+	const CShader* const vertexShader = g_dxHandler->GetShaderManager()->LoadShader("shaders/model_vs", eShaderType::Vertex);
+#endif
+	const CShader* const pixelShader = g_dxHandler->GetShaderManager()->LoadShader("shaders/model_ps", eShaderType::Pixel);
+
 	// [rika]: our currently selected skin
 	const ModelSkinData_t& skinData = parsedData->skins.at(info->selectedSkinIndex);
 	for (size_t i = 0; i < lodData.meshes.size(); ++i)
@@ -1873,6 +1886,12 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		else
 			drawData->meshBuffers[i].visible = false;
 
+		// Placeholder shaders
+		meshDrawData->pixelShader = pixelShader->Get<ID3D11PixelShader>();
+		meshDrawData->vertexShader = vertexShader->Get<ID3D11VertexShader>();
+		meshDrawData->inputLayout = vertexShader->GetInputLayout();
+		meshDrawData->hasGameShaders = false;
+
 		// the rest of this loop requires the material to be valid
 		// so if it isn't just continue to the next iteration
 		CPakAsset* const matlAsset = parsedData->materials.at(skinData.indices[mesh.materialId]).asset;
@@ -1882,19 +1901,22 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		const MaterialAsset* const matl = reinterpret_cast<MaterialAsset*>(matlAsset->extraData());
 
 #if defined(ADVANCED_MODEL_PREVIEW)
+		// If the material has a valid shaderset loaded, try and grab its shaders to use for this mesh's advanced model preview
 		if (matl->shaderSetAsset)
 		{
 			ShaderSetAsset* const shaderSet = reinterpret_cast<ShaderSetAsset*>(matl->shaderSetAsset->extraData());
 
 			if (shaderSet->vertexShaderAsset && shaderSet->pixelShaderAsset)
 			{
-				ShaderAsset* const vertexShader = reinterpret_cast<ShaderAsset*>(shaderSet->vertexShaderAsset->extraData());
-				ShaderAsset* const pixelShader = reinterpret_cast<ShaderAsset*>(shaderSet->pixelShaderAsset->extraData());
+				//ShaderAsset* const shadersetVS = reinterpret_cast<ShaderAsset*>(shaderSet->vertexShaderAsset->extraData());
+				ShaderAsset* const shadersetPS = reinterpret_cast<ShaderAsset*>(shaderSet->pixelShaderAsset->extraData());
 
-				meshDrawData->vertexShader = vertexShader->vertexShader;
-				meshDrawData->pixelShader = pixelShader->pixelShader;
+				//meshDrawData->vertexShader = vertexShader->vertexShader;
+				meshDrawData->pixelShader = shadersetPS->pixelShader;
 
-				meshDrawData->inputLayout = vertexShader->vertexInputLayout;
+				//meshDrawData->inputLayout = vertexShader->vertexInputLayout;
+
+				meshDrawData->hasGameShaders = true;
 			}
 		}
 #endif
@@ -1914,82 +1936,18 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		}
 	}
 
+	// Map some (potentially incorrect) bone data
 	if (!drawData->boneMatrixBuffer)
 		InitModelBoneMatrix(drawData, parsedData);
 
-	if (!drawData->transformsBuffer)
-	{
-		D3D11_BUFFER_DESC desc{};
+	Preview_MapTransformsBuffer(drawData);
+	Preview_MapModelInstanceBuffer(drawData);
 
-#if defined(ADVANCED_MODEL_PREVIEW)
-		constexpr UINT transformsBufferSizeAligned = IALIGN(sizeof(CBufModelInstance), 16);
-#else
-		constexpr UINT transformsBufferSizeAligned = IALIGN(sizeof(VS_TransformConstants), 16);
-#endif
-
-		desc.ByteWidth = transformsBufferSizeAligned;
-
-		// make sure this buffer can be updated every frame
-		desc.Usage = D3D11_USAGE_DYNAMIC;
-		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		// const buffer
-		desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-
-		g_dxHandler->GetDevice()->CreateBuffer(&desc, NULL, &drawData->transformsBuffer);
-	}
-
-	D3D11_MAPPED_SUBRESOURCE resource;
-	g_dxHandler->GetDeviceContext()->Map(
-		drawData->transformsBuffer, 0,
-		D3D11_MAP_WRITE_DISCARD, 0,
-		&resource
-	);
-
-	CDXCamera* const camera = g_dxHandler->GetCamera();
-	const XMMATRIX view = camera->GetViewMatrix();
-	const XMMATRIX model = XMMatrixTranslationFromVector(drawData->position.AsXMVector());
-	const XMMATRIX projection = g_dxHandler->GetProjMatrix();
-
-#if !defined(ADVANCED_MODEL_PREVIEW)
-	VS_TransformConstants* const transforms = reinterpret_cast<VS_TransformConstants*>(resource.pData);
-	transforms->modelMatrix = XMMatrixTranspose(model);
-	transforms->viewMatrix = XMMatrixTranspose(view);
-	transforms->projectionMatrix = XMMatrixTranspose(projection);
-#else
-	CBufModelInstance* const modelInstance = reinterpret_cast<CBufModelInstance*>(resource.pData);
-	CBufModelInstance::ModelInstance& mi = modelInstance->c_modelInst;
-
-	// sub_18001FB40 in r2
-	XMMATRIX modelMatrix = {};
-	memcpy(&modelMatrix, &modelAsset->bones[0].poseToBone, sizeof(ModelBone_t::poseToBone));
-
-	modelMatrix.r[3].m128_f32[3] = 1.f;
-
-	mi.objectToCameraRelativePrevFrame = mi.objectToCameraRelative;
-
-	modelMatrix.r[0].m128_f32[3] += camera->position.x;
-	modelMatrix.r[1].m128_f32[3] += camera->position.y;
-	modelMatrix.r[2].m128_f32[3] += camera->position.z;
-
-	modelMatrix -= XMMatrixRotationRollPitchYaw(camera->rotation.x, camera->rotation.y, camera->rotation.z);
-
-	modelMatrix = XMMatrixTranspose(modelMatrix);
-
-	mi.diffuseModulation = { 1.f, 1.f, 1.f, 1.f };
-
-	XMStoreFloat3x4(&mi.objectToCameraRelative, modelMatrix);
-	XMStoreFloat3x4(&mi.objectToCameraRelativePrevFrame, modelMatrix);
-
-#endif
-
-	if (info->lastSelectedBodypartIndex != info->selectedBodypartIndex)
+	if (info->lastSelectedBodypartIndex != info->selectedBodypartIndex) UNLIKELY
 		info->lastSelectedBodypartIndex = info->selectedBodypartIndex;
 
-	if (info->lastSelectedSkinIndex != info->selectedSkinIndex)
+	if (info->lastSelectedSkinIndex != info->selectedSkinIndex) UNLIKELY
 		info->lastSelectedSkinIndex = info->selectedSkinIndex;
-
-	g_dxHandler->GetDeviceContext()->Unmap(drawData->transformsBuffer, 0);
 
 	return drawData;
 }

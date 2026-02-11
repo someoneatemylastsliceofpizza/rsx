@@ -18,6 +18,7 @@
 #include <game/rtech/assets/model.h>
 #include <game/rtech/assets/texture.h>
 #include <game/rtech/assets/settings.h>
+#include <core/render/preview/preview.h>
 
 extern CDXParentHandler* g_dxHandler;
 extern std::atomic<uint32_t> maxConcurrentThreads;
@@ -73,13 +74,6 @@ struct AssetCompare_t
         return (static_cast<int64_t>(assetA->GetAssetType()) - assetB->GetAssetType()) > 0;
     }
 };
-
-
-// TODO: Add shortcut handling for copying asset names with CTRL+C when assets are selected and asset list is focused.
-//void HandleImGuiShortcuts()
-//{
-//
-//}
 
 void ColouredTextForAssetType(const CAsset* const asset)
 {
@@ -383,6 +377,8 @@ void DrawSettingsWindow(CUIState* uiState)
     }
 }
 extern void ItemflavWindow_Draw(CUIState*);
+extern void LogWindow_Draw(CUIState*);
+
 void HandleRenderFrame()
 {
     ImGui_ImplDX11_NewFrame();
@@ -446,11 +442,15 @@ void HandleRenderFrame()
             {
                 if (!inJobAction)
                 {
+                    if(g_assetData.v_assets.size() > 0)
+                        g_assetData.Log_Info(nullptr, "Unloaded %lld asset%s from %lld container file%s", g_assetData.v_assets.size(), g_assetData.v_assets.size() == 1 ? "" : "s", g_assetData.v_assetContainers.size(), g_assetData.v_assetContainers.size() == 1 ? "" : "s");
+
                     selectedAssets.clear();
                     filteredAssets.clear();
                     prevRenderInfoAsset = nullptr;
                     g_assetData.ClearAssetData();
                     uiState.ClearAssetData();
+
                 }
             }
 
@@ -459,17 +459,17 @@ void HandleRenderFrame()
 
         if (ImGui::BeginMenu("Edit"))
         {
-            //if (ImGui::MenuItem("Copy Asset Names", "CTRL+C"))
-            //{
-            // 
-            //}
-
             if (ImGui::MenuItem("Settings"))
                 uiState.ShowSettingsWindow(true);
 
 #if defined(HAS_ITEMFLAV_WINDOW)
             if (ImGui::MenuItem("Itemflavors"))
                 uiState.ShowItemflavWindow(true);
+#endif
+
+#if defined(HAS_LOG_WINDOW)
+            if (ImGui::MenuItem("Logs"))
+                uiState.ShowLogWindow(true);
 #endif
 
             ImGui::EndMenu();
@@ -813,6 +813,7 @@ void HandleRenderFrame()
 
                         previewDrawData = reinterpret_cast<CDXDrawData*>(it->second.previewFunc(static_cast<CPakAsset*>(firstAsset), firstFrameForAsset));
                         prevRenderInfoAsset = firstAsset;
+
                     }
                     else
                     {
@@ -841,21 +842,16 @@ void HandleRenderFrame()
         ItemflavWindow_Draw(&uiState);
 #endif
 
+#if defined(HAS_LOG_WINDOW)
+    if (uiState.logWindowVisible)
+        LogWindow_Draw(&uiState);
+#endif
+
     g_pImGuiHandler->HandleProgressBar();
 
     ImDrawList* bgDrawList = ImGui::GetBackgroundDrawList();
     if (previewDrawData)
     {
-        //const CDXCamera* camera = g_dxHandler->GetCamera();
-        //bgDrawList->AddText(
-        //    ImGui::GetFont(), 15.f,
-        //    ImVec2(10, 20), 0xFFFFFFFF,
-        //    std::format("pos: {:.3f} {:.3f} {:.3f}\nrot: {:.3f} {:.3f} {:.3f}",
-        //        camera->position.x, camera->position.y, camera->position.z,
-        //        camera->rotation.x, camera->rotation.y, camera->rotation.z
-        //    ).c_str());
-        //bgDrawList->AddText(ImGui::GetFont(), 20.f, ImVec2(10, 50), 0xFF0000FF, previewDrawData->modelName);
-
         bgDrawList->AddText(
             ImGui::GetFont(), 15.f,
             ImVec2(10, 20), 0xFFFFFFFF,
@@ -863,17 +859,29 @@ void HandleRenderFrame()
     }
 
     ImGui::Render();
+
     if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
     {
         ImGui::UpdatePlatformWindows();
         ImGui::RenderPlatformWindowsDefault();
     }
 
+    // Preview rendering
+    ID3D11Device* const device = g_dxHandler->GetDevice();
+    CDXScene& scene = g_dxHandler->GetScene();
+    ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
+
+#if !defined(ADVANCED_MODEL_PREVIEW)
+    UNUSED(device);
+    UNUSED(scene);
+#endif
+
     ID3D11RenderTargetView* const mainView = g_dxHandler->GetMainView();
     static constexpr float clear_color_with_alpha[4] = { 0.01f, 0.01f, 0.01f, 1.00f };
-    g_dxHandler->GetDeviceContext()->OMSetRenderTargets(1, &mainView, g_dxHandler->GetDepthStencilView());
-    g_dxHandler->GetDeviceContext()->ClearRenderTargetView(mainView, clear_color_with_alpha);
-    g_dxHandler->GetDeviceContext()->ClearDepthStencilView(g_dxHandler->GetDepthStencilView(), D3D11_CLEAR_DEPTH, 1, 0);
+
+    ctx->OMSetRenderTargets(1, &mainView, g_dxHandler->GetDepthStencilView());
+    ctx->ClearRenderTargetView(mainView, clear_color_with_alpha);
+    ctx->ClearDepthStencilView(g_dxHandler->GetDepthStencilView(), D3D11_CLEAR_DEPTH, 1, 0);
 
     LONG width = 0ul;
     LONG height = 0ul;
@@ -885,62 +893,45 @@ void HandleRenderFrame()
         static_cast<float>(height),
         0, 1
     };
-    ID3D11Device* const device = g_dxHandler->GetDevice();
-    ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
 
-#if !defined(ADVANCED_MODEL_PREVIEW)
-    UNUSED(device);
-#endif
-
-    g_dxHandler->GetDeviceContext()->RSSetViewports(1u, &vp);
-    g_dxHandler->GetDeviceContext()->RSSetState(g_dxHandler->GetRasterizerState());
-    g_dxHandler->GetDeviceContext()->OMSetDepthStencilState(g_dxHandler->GetDepthStencilState(), 1u);
+    ctx->RSSetViewports(1u, &vp);
+    ctx->RSSetState(g_dxHandler->GetRasterizerState());
+    ctx->OMSetDepthStencilState(g_dxHandler->GetDepthStencilState(), 1u);
 
 #if defined(ADVANCED_MODEL_PREVIEW)
+    // Update CBufCommonPerCamera
     g_dxHandler->GetCamera()->CommitCameraDataBufferUpdates();
 
-    CDXScene& scene = g_dxHandler->GetScene();
-
-    if (scene.globalLights.size() == 0)
-    {
-        HardwareLight& light = scene.globalLights.emplace_back();
-
-        light.pos = { 0, 10.f, 0 };
-        light.rcpMaxRadius = 1 / 100.f;
-        light.rcpMaxRadiusSq = 1 / (light.rcpMaxRadius * light.rcpMaxRadius);
-        light.attenLinear = -1.95238f;
-        light.attenQuadratic = 0.95238f;
-        light.specularIntensity = 1.f;
-        light.color = { 1.f, 1.f, 1.f };
-    }
+    scene.UpdateHardwareLights();
+    scene.UpdateCubemapSamples();
 
     if (scene.NeedsLightingUpdate())
-        g_dxHandler->GetScene().CreateOrUpdateLights(device, ctx);
+        scene.MapAndUpdateLightBuffer(device, ctx);
+
+    if (scene.NeedsCubemapSmpUpdate())
+        scene.MapAndUpdateCubemapSamplesBuffer(device, ctx);
 #endif
+
+
 
     if (previewDrawData)
     {
+        previewDrawData->SetPSResource(PSRSRC_CUBEMAP, g_dxHandler->GetCubemapSRV());
+        previewDrawData->SetPSResource(PSRSRC_CSMDEPTHATLASSAMPLER, g_dxHandler->GetCSMDepthAtlasSamplerSRV());
+        previewDrawData->SetPSResource(PSRSRC_SHADOWMAP, g_dxHandler->GetShadowMapSRV());
+        previewDrawData->SetPSResource(PSRSRC_CLOUDMASK, g_dxHandler->GetCloudMaskSRV());
+        previewDrawData->SetPSResource(PSRSRC_STATICSHADOWTEXTURE, g_dxHandler->GetStaticShadowTexSRV());
+        
         CDXCamera* const camera = g_dxHandler->GetCamera();
 
-        if (previewDrawData->vertexShader && previewDrawData->pixelShader)
-        {
-            CShader* vertexShader = previewDrawData->vertexShader;
-            CShader* pixelShader = previewDrawData->pixelShader;
 
+        if (previewDrawData->vertexShader && previewDrawData->pixelShader) LIKELY
+        {
             ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-            ctx->IASetInputLayout(vertexShader->GetInputLayout());
-
-            if (vertexShader)
-                ctx->VSSetShader(vertexShader->Get<ID3D11VertexShader>(), nullptr, 0u);
-
-            if (pixelShader)
-                ctx->PSSetShader(pixelShader->Get<ID3D11PixelShader>(), nullptr, 0u);
-
             assertm(previewDrawData->transformsBuffer, "uh oh something very bad happened!!!!!!");
-            ID3D11Buffer* const transformsBuffer = previewDrawData->transformsBuffer;
 
-            ctx->VSSetConstantBuffers(0u, 1u, &transformsBuffer);
+            ctx->VSSetConstantBuffers(0u, 1u, &previewDrawData->transformsBuffer); // VS_TransformConstants/CBufModelInstance
 
             UINT offset = 0u;
 
@@ -948,59 +939,47 @@ void HandleRenderFrame()
             {
                 const DXMeshDrawData_t& meshDrawData = previewDrawData->meshBuffers[i];
 
-                // if this mesh is not visible, don't draw it!
-                if (!meshDrawData.visible)
+                if (!meshDrawData.visible || !meshDrawData.vertexShader || !meshDrawData.pixelShader)
                     continue;
 
-                if (meshDrawData.doFrustumCulling)
-                {
-                    // todo
-                }
+                assertm(meshDrawData.vertexShader != nullptr, "No vertex shader?");
+                assertm(meshDrawData.pixelShader  != nullptr, "No pixel shader?");
 
-#if defined(ADVANCED_MODEL_PREVIEW)
-                const bool useAdvancedModelPreview = meshDrawData.vertexShader && meshDrawData.pixelShader;
-#else
-                constexpr bool useAdvancedModelPreview = false;
-#endif
+                ctx->IASetInputLayout(meshDrawData.inputLayout);
+                ctx->VSSetShader(meshDrawData.vertexShader, nullptr, 0u);
 
                 ID3D11Buffer* sharedConstBuffers[] = {
-                    camera->bufCommonPerCamera,
-                    previewDrawData->transformsBuffer,
+                    camera->bufCommonPerCamera,        // CBufCommonPerCamera - b2
+                    previewDrawData->modelInstanceBuffer, // CBufModelInstance - b3
                 };
-
-                if (meshDrawData.vertexShader)
-                {
-                    ctx->IASetInputLayout(meshDrawData.inputLayout);
-                    ctx->VSSetShader(meshDrawData.vertexShader, nullptr, 0u);
-                }
-                else
-                    ctx->VSSetShader(vertexShader->Get<ID3D11VertexShader>(), nullptr, 0u);
-
-                // if we have a custom vertex shader and/or pixel shader for this mesh from the draw data, use it
-                // otherwise we can fall back on the base shaders
-                if (useAdvancedModelPreview)
-                {
-                    ctx->VSSetConstantBuffers(2u, ARRSIZE(sharedConstBuffers), sharedConstBuffers);
-
-                    ctx->VSSetShaderResources(60u, 1u, &previewDrawData->boneMatrixSRV);
-                    ctx->VSSetShaderResources(62u, 1u, &previewDrawData->boneMatrixSRV);
-                }
 
                 for (auto& rsrc : previewDrawData->vertexShaderResources)
                 {
-                    ctx->VSSetShaderResources(rsrc.bindPoint, 1u, &rsrc.resourceView);
+                    ctx->VSSetShaderResources(rsrc.first, 1u, &rsrc.second);
+                }
+
+                // [AMP]
+                if (meshDrawData.hasGameShaders)
+                {
+                    // VertexShader: CBufCommonPerCamera, CBufModelInstance
+                    ctx->VSSetConstantBuffers(2u, ARRSIZE(sharedConstBuffers), sharedConstBuffers);
+
+                    // VertexShader: g_boneMatrix, g_boneMatrixPrevFrame
+                    ctx->VSSetShaderResources(VSRSRC_BONE_MATRIX, 1u, &previewDrawData->boneMatrixSRV);
+                    ctx->VSSetShaderResources(VSRSRC_BONE_MATRIX_PREV_FRAME, 1u, &previewDrawData->boneMatrixSRV);
                 }
 
                 ctx->IASetVertexBuffers(0u, 1u, &meshDrawData.vertexBuffer, &meshDrawData.vertexStride, &offset);
+                // ==============================================================================
 
-                if (meshDrawData.pixelShader)
-                    ctx->PSSetShader(meshDrawData.pixelShader, nullptr, 0u);
-                else
-                    ctx->PSSetShader(pixelShader->Get<ID3D11PixelShader>(), nullptr, 0u);
+                assertm(meshDrawData.pixelShader != nullptr, "No pixel shader?");
+                   
+                ctx->PSSetShader(meshDrawData.pixelShader, nullptr, 0u);
 
                 ID3D11SamplerState* const samplerState = g_dxHandler->GetSamplerState();
 
-                if (useAdvancedModelPreview)
+                // [AMP] Samplers, Lights, CBufs
+                if (meshDrawData.hasGameShaders)
                 {
                     ID3D11SamplerState* samplers[] = {
                         g_dxHandler->GetSamplerComparisonState(),
@@ -1011,15 +990,23 @@ void HandleRenderFrame()
 
                     if (meshDrawData.uberStaticBuf)
                         ctx->PSSetConstantBuffers(0u, 1u, &meshDrawData.uberStaticBuf);
+
+                    if (meshDrawData.uberDynamicBuf)
+                        ctx->PSSetConstantBuffers(1u, 1u, &meshDrawData.uberDynamicBuf);
+
+
+                    // PixelShader: CBufCommonPerCamera, CBufModelInstance
                     ctx->PSSetConstantBuffers(2u, ARRSIZE(sharedConstBuffers), sharedConstBuffers);
 
-#if defined(ADVANCED_MODEL_PREVIEW)
-                    scene.BindLightsSRV(ctx);
-#endif
+                    // PixelShader: s_globalLights
+                    ctx->PSSetShaderResources(PSRSRC_GLOBAL_LIGHTS, 1u, &scene.globalLightsSRV);
+                    ctx->PSSetShaderResources(PSRSRC_CUBEMAP_SAMPLES, 1u, &scene.cubemapSamplesSRV);
                 }
                 else
                     ctx->PSSetSamplers(0, 1, &samplerState);
 
+
+                // Bind texture resources for this mesh's material
                 for (auto& tex : meshDrawData.textures)
                 {
                     ID3D11ShaderResourceView* const textureSRV = tex.texture
@@ -1029,19 +1016,18 @@ void HandleRenderFrame()
                     ctx->PSSetShaderResources(tex.resourceBindPoint, 1u, &textureSRV);
                 }
 
+                // Bind pixel shader resources
                 for (auto& rsrc : previewDrawData->pixelShaderResources)
                 {
-                    ctx->PSSetShaderResources(rsrc.bindPoint, 1u, &rsrc.resourceView);
+                    ctx->PSSetShaderResources(rsrc.first, 1u, &rsrc.second);
                 }
 
+                // ==============================================================================
                 ctx->IASetIndexBuffer(meshDrawData.indexBuffer, meshDrawData.indexFormat, 0u);
                 ctx->DrawIndexed(static_cast<UINT>(meshDrawData.numIndices), 0u, 0u);
             }
         }
-        else
-        {
-            assertm(0, "Failed to load shaders for model preview.");
-        }
+        else assertm(0, "Failed to load shaders for model preview.");
     }
 
     prevAssetCount = g_assetData.v_assets.size();

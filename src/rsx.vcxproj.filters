@@ -91,6 +91,9 @@
     <Filter Include="core\render\ui">
       <UniqueIdentifier>{fb013ca8-0617-476d-afc3-15fb69bf68d7}</UniqueIdentifier>
     </Filter>
+    <Filter Include="core\render\preview">
+      <UniqueIdentifier>{50a690ff-57d0-4929-89e8-cc6bf2f31238}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -420,6 +423,12 @@
     <ClInclude Include="core\utils\cli_parser.h">
       <Filter>core\utils</Filter>
     </ClInclude>
+    <ClInclude Include="core\render\preview\lighting.h">
+      <Filter>core\render\preview</Filter>
+    </ClInclude>
+    <ClInclude Include="core\render\preview\preview.h">
+      <Filter>core\render\preview</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -689,7 +698,6 @@
     <ClCompile Include="core\mdl\qc.cpp">
       <Filter>core\mdl</Filter>
     </ClCompile>
-    <ClCompile Include="core\render\dxutils.cpp" />
     <ClCompile Include="game\rtech\assets\animseq_data.cpp">
       <Filter>game\rtech\assets</Filter>
     </ClCompile>
@@ -702,9 +710,6 @@
     <ClCompile Include="core\mdl\animdata.cpp">
       <Filter>core\mdl</Filter>
     </ClCompile>
-    <ClCompile Include="render\ui\itemflav_window.cpp">
-      <Filter>core\render\ui</Filter>
-    </ClCompile>
     <ClCompile Include="core\mdl\modeldata_qc.cpp">
       <Filter>core\mdl</Filter>
     </ClCompile>
@@ -713,6 +718,18 @@
     </ClCompile>
     <ClCompile Include="core\utils\cli_parser.cpp">
       <Filter>core\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\dxutils.cpp">
+      <Filter>core\render</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\ui\log_window.cpp">
+      <Filter>core\render\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\preview\preview.cpp">
+      <Filter>core\render\preview</Filter>
+    </ClCompile>
+    <ClCompile Include="core\render\ui\itemflav_window.cpp">
+      <Filter>core\render\ui</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -31,6 +31,7 @@ void LoadDatatableAsset(CAssetContainer* const pak, CAsset* const asset)
         return;
     }
 
+    pakAsset->SetAssetNameFromCache();
     pakAsset->setExtraData(dtblAsset);
 }
 
@@ -39,6 +40,9 @@ void* PreviewDatatableAsset(CAsset* const asset, const bool firstFrameForAsset)
     UNUSED(firstFrameForAsset);
 
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
+
+    if (!pakAsset->hasExtraData())
+        return nullptr;
 
     const DatatableAsset* const dtblAsset = pakAsset->extraData<const DatatableAsset* const>();
 
@@ -283,16 +287,6 @@ bool ExportDatatableAsset(CAsset* const asset, const int setting)
     unreachable();
 }
 
-void PostLoadDatatableAsset(CAssetContainer* container, CAsset* asset)
-{
-    UNUSED(container);
-
-    CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
-
-    // [rika]: has no name var
-    pakAsset->SetAssetNameFromCache();
-}
-
 void InitDatatableAssetType()
 {
     AssetTypeBinding_t type =
@@ -301,7 +295,7 @@ void InitDatatableAssetType()
         .type = 'lbtd',
         .headerAlignment = 8,
         .loadFunc = LoadDatatableAsset,
-        .postLoadFunc = PostLoadDatatableAsset,
+        .postLoadFunc = nullptr,
         .previewFunc = PreviewDatatableAsset,
         .e = { ExportDatatableAsset, 0, nullptr, 0ull },
     };

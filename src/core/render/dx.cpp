@@ -34,6 +34,18 @@ CTexture::CTexture(ID3D11Device* const device, const char* const buf, const size
     CreateShaderResourceView(device);
 }
 
+CTexture::CTexture(void* scratchImg, ID3D11Device* const device)
+{
+    DirectX::ScratchImage* scratch = reinterpret_cast<DirectX::ScratchImage*>(scratchImg);
+    const DirectX::TexMetadata& meta = scratch->GetMetadata();
+
+    m_texture = scratchImg;
+    m_width = meta.width;
+    m_height = meta.height;
+    
+    CreateShaderResourceView(device);
+}
+
 CTexture::~CTexture()
 {
     if (m_texture)
@@ -486,6 +498,7 @@ bool CDXParentHandler::SetActiveMonitor()
 
 bool CDXParentHandler::SetupSwapchain()
 {
+#if !defined(BUILD_NOGUI)
     DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
     swapChainDesc.BufferCount = 2u;
     swapChainDesc.BufferDesc.Width = 0u;
@@ -518,6 +531,9 @@ bool CDXParentHandler::SetupSwapchain()
         assertm(false, "Failed to setup device and swapchain.");
         return false;
     }
+#else
+    assertm(false, "Failed to setup device and swapchain; BUILD_NOGUI was defined");
+#endif
 
     return true;
 }
@@ -630,7 +646,7 @@ bool CDXParentHandler::CreateMainView(const uint16_t w, const uint16_t h)
             assertm(false, "Failed to create sampler comparison state (shadowmapSampler)");
     }
 
-    m_wndProjMatrix = XMMatrixPerspectiveFovLH(0.25f * XM_PI, static_cast<float>(w) / h, 0.1f, g_PreviewSettings.previewCullDistance);
+    m_projectionMatrix = XMMatrixPerspectiveFovLH(0.25f * XM_PI, static_cast<float>(w) / h, 0.1f, g_PreviewSettings.previewCullDistance);
 
     pBackBuffer->Release();
     return true;
@@ -700,6 +716,9 @@ void CDXParentHandler::CleanupD3D()
 
     FreeAllocArray(m_ppAdapters);
     FreeAllocArray(m_pMonitors);
+
+    DX_RELEASE_PTR(m_CubemapTex);
+    DX_RELEASE_PTR(m_CubemapTexSRV);
 }
 
 void CDXParentHandler::HandleResize(const uint16_t x, const uint16_t y)
@@ -856,10 +875,12 @@ void CDXCamera::UpdateCommonCameraData()
     //data.c_cameraRelativeToClip.r[3].m128_f32[3] = 0;
     //data.c_cameraRelativeToClip = XMMatrixTranspose(data.c_cameraRelativeToClip);
 
-    const XMMATRIX view = g_dxHandler->GetCamera()->GetViewMatrix();
-    const XMMATRIX proj = g_dxHandler->GetProjMatrix();
-    CalculateCameraRelativeToClipMatrix(&data.c_cameraRelativeToClip, &view, &proj);
+    const XMMATRIX view = (g_dxHandler->GetCamera()->GetViewMatrix());
+    const XMMATRIX proj = (g_dxHandler->GetProjMatrix());
 
+    //data.c_cameraRelativeToClip = XMMatrixMultiply(view, proj);
+    //CalculateCameraRelativeToClipMatrix(&data.c_cameraRelativeToClip, &view, &proj);
+    XMStoreFloat4x4(&data.c_cameraRelativeToClip, view * proj);
 
     data.c_cameraOriginPrevFrame = this->position;
     data.c_frameNum++;
@@ -871,21 +892,37 @@ void CDXCamera::UpdateCommonCameraData()
     data.c_sunColor = { 2.23922f, 2.08272f, 1.80694f };
 
     data.c_maxLightingValue = 5.f;
+    data.c_minShadowVariance = 1e-05f;
 
-    data.c_zNear = 0.1f;
+    data.c_zNear = 1.f;
 
-    data.c_viewportMinMaxZ = float2(0.9f, 1.f);
+    data.c_viewportMinMaxZ = float2(0.f, 1.f);
+    data.c_viewportBias = float2(0.f, 0.f);
     data.c_viewportScale = float2(1.f, 1.f);
     data.c_rcpViewportScale = float2(1.f, 1.f);
+
     data.c_framebufferViewportScale = float2(1.f, 1.f);
-    data.c_rcpFramebufferViewportScale = float2(1.f, 1.f);
-    data.c_separateIndirectDiffuse = 1;
+    data.c_rcpFramebufferViewportScale = float2(1.f / data.c_framebufferViewportScale.x, 1.f / data.c_framebufferViewportScale.y);
+    data.c_separateIndirectDiffuse = 0;
 
+    data.c_cloudRelConst = float2(0.5, -2579.50f);
+    data.c_cloudRelForX = float2(0.5, 0);
+    data.c_cloudRelForY = float2(0, -0.5);
+    data.c_cloudRelForZ = float2(0, 0);
 
-    data.c_renderTargetSize = float2(1920, 1080);
-    data.c_rcpRenderTargetSize = float2(1.f/1920, 1.f/1080);
+    RECT rect;
+    if (GetWindowRect(g_dxHandler->GetWindowHandle(), &rect))
+    {
+        float width = static_cast<float>(rect.right - rect.left);
+        float height = static_cast<float>(rect.bottom - rect.top);
 
-    data.c_cameraLenY = 1.f;
+        data.c_renderTargetSize = float2(width, height);
+        data.c_rcpRenderTargetSize = float2(1.f / data.c_renderTargetSize.x, 1.f / data.c_renderTargetSize.y);
+    }
+    else
+        Log("GetWindowRect failed: %u\n", GetLastError());
+
+    data.c_cameraLenY = 9.7f;
     data.c_cameraRcpLenY = 1.f / data.c_cameraLenY;
 }
 

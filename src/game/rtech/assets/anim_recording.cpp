@@ -5,7 +5,7 @@
 #include <game/rtech/utils/utils.h>
 #include <thirdparty/imgui/imgui.h>
 
-void PostLoadAnimRecordingAsset(CAssetContainer* const container, CAsset* const asset)
+void LoadAnimRecordingAsset(CAssetContainer* const container, CAsset* const asset)
 {
     UNUSED(container);
 
@@ -153,8 +153,8 @@ void InitAnimRecordingAssetType()
         .name = "Animation Recording",
         .type = 'rina',
         .headerAlignment = 8,
-        .loadFunc = nullptr,
-        .postLoadFunc = PostLoadAnimRecordingAsset,
+        .loadFunc = LoadAnimRecordingAsset,
+        .postLoadFunc = nullptr,
         .previewFunc = nullptr,
         .e = { ExportAnimRecordingAsset, 0, nullptr, 0ull },
     };

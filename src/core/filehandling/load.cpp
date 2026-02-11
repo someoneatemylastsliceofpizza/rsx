@@ -51,8 +51,10 @@ static void HandleFileLoad(std::vector<std::string> filePaths, HandleFileLoadCal
             break;
         }
     }
-
-    g_assetData.ProcessAssetsPostLoad();
+    
+    // Only run post-load if we are running with GUI, or if CLI has requested the export of some assets
+    if(!cli || !cli->HasParam("-nogui") || cli->HasParam("-export"))
+        g_assetData.ProcessAssetsPostLoad();
 
     // This callback is only really needed for CLI, since users aren't able to access the assets before postloading anyway
     if (cli && cli->HasParam("-nogui"))
@@ -115,6 +117,17 @@ void OnCLILoadComplete(const CCommandLine* const cli)
             ExportAssetListTXTToFileStream(&g_assetData.v_assets, &ofs);
         else if (!_stricmp(listFormat, "csv"))
             ExportAssetListCSVToFileStream(&g_assetData.v_assets, &ofs);
+    }
+
+    // Writes a file containing info about each asset's dependencies to the provided file path
+    if (const char* const depFilePath = cli->GetParamValue("--depfilepath"))
+    {
+        std::ofstream ofs(depFilePath, std::ios::out | std::ios::binary);
+
+        const char* depFileFormat = cli->GetParamValue("--depfileformat");
+
+        if (!depFileFormat || !_stricmp(depFileFormat, "adjlist"))
+            ExportDependenciesToFileStream_AdjList(&g_assetData.v_assets, &ofs);
     }
 }
 

@@ -59,7 +59,8 @@ void LoadTextureAsset(CAssetContainer* const pak, CAsset* const asset)
         std::string name = FormatTextureAssetName(txtrAsset->name);
 
         pakAsset->SetAssetName(name, true);
-    }
+    } else
+        pakAsset->SetAssetNameFromCache();
 
     // [rika]: verify we know this texture format
     assertm(txtrAsset->imgFormat < eTextureFormat::TEX_FMT_UNKNOWN, "unaccounted texture format!");
@@ -341,19 +342,6 @@ void LoadTextureAsset(CAssetContainer* const pak, CAsset* const asset)
     std::sort(txtrAsset->mipArray.begin(), txtrAsset->mipArray.end(), [](const TextureMip_t& a, const TextureMip_t& b) { return a.level < b.level; });
 
     pakAsset->setExtraData(txtrAsset);
-}
-
-void PostLoadTextureAsset(CAssetContainer* container, CAsset* asset)
-{
-    UNUSED(container);
-
-    CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
-    const TextureAsset* const txtrAsset = pakAsset->extraData<const TextureAsset* const>();
-
-    if (!txtrAsset->name)
-    {
-        pakAsset->SetAssetNameFromCache();
-    }
 }
 
 std::shared_ptr<CTexture> CreateTextureFromMip(CPakAsset* const asset, const TextureMip_t* const mip, const DXGI_FORMAT format, const size_t arrayIdx)
@@ -1242,7 +1230,7 @@ void InitTextureAssetType()
         .type = 'rtxt',
         .headerAlignment = 8,
         .loadFunc = LoadTextureAsset,
-        .postLoadFunc = PostLoadTextureAsset,
+        .postLoadFunc = nullptr,
         .previewFunc = PreviewTextureAsset,
         .e = { ExportTextureAsset, 0, settings, ARRSIZE(settings) }
     };

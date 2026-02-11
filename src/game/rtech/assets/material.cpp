@@ -232,6 +232,9 @@ void PostLoadMaterialAsset(CAssetContainer* const container, CAsset* const asset
         return;
     }
 
+    if (!pakAsset->hasExtraData())
+        return;
+
     MaterialAsset* const materialAsset = pakAsset->extraData<MaterialAsset* const>();
 
     // [rika]: parse our snapshot here!
@@ -274,6 +277,17 @@ void PostLoadMaterialAsset(CAssetContainer* const container, CAsset* const asset
             &materialAsset->uberStaticBuffer, materialAsset->cpuDataSize,
             D3D11_USAGE_IMMUTABLE, D3D11_BIND_CONSTANT_BUFFER,
             0, 0, 0, materialAsset->cpuData
+        );
+
+        CBufUberDynamic dynamicData{};
+        dynamicData.c_glitchAberrationScale = 10.f;
+        dynamicData.c_rcpCloakAberrationScale = 0.333f;
+        dynamicData.c_materialID = 1513u;
+
+        CreateD3DBuffer(g_dxHandler->GetDevice(),
+            &materialAsset->uberDynamicBuffer, sizeof(CBufUberDynamic),
+            D3D11_USAGE_IMMUTABLE, D3D11_BIND_CONSTANT_BUFFER,
+            0, 0, 0, &dynamicData
         );
     }
 
@@ -407,6 +421,9 @@ void MatPreview_DXState(const MaterialDXState_t& dxState, const uint8_t dxStateI
 void* PreviewMaterialAsset(CAsset* const asset, const bool firstFrameForAsset)
 {
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
+
+    if (!pakAsset->hasExtraData())
+        return nullptr;
 
     const MaterialAsset* const materialAsset = pakAsset->extraData<MaterialAsset*>();
 
@@ -1124,6 +1141,9 @@ static const char* const s_PathPrefixMATL = s_AssetTypePaths.find(AssetType_t::M
 bool ExportMaterialAsset(CAsset* const asset, const int setting)
 {
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
+
+    if (!pakAsset->hasExtraData())
+        return false;
 
     const MaterialAsset* const materialAsset = pakAsset->extraData<const MaterialAsset* const>();
 

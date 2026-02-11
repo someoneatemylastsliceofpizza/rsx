@@ -1,28 +1,6 @@
 #pragma once
 #include <d3d11.h>
-
-struct HardwareLight
-{
-	int propertyFlags;             // Offset:    0
-	float emitterRadius;           // Offset:    4
-	int shdFlags;                  // Offset:    8
-	float highlightSize;           // Offset:   12
-	XMFLOAT3 pos;                    // Offset:   16
-	float rcpMaxRadius;            // Offset:   28
-	float rcpMaxRadiusSq;          // Offset:   32
-	float attenLinear;             // Offset:   36
-	float attenQuadratic;          // Offset:   40
-	float specularIntensity;       // Offset:   44
-	XMFLOAT3 spotDir;                // Offset:   48
-	float spotBias;                // Offset:   60
-	XMFLOAT3 spotAxisX;              // Offset:   64
-	float spotExpSel;              // Offset:   76
-	XMFLOAT3 spotAxisY;              // Offset:   80
-	int isShadowed;                // Offset:   92
-	XMFLOAT3 color;                  // Offset:   96
-	float shadowBias;              // Offset:  108
-	XMFLOAT4 shadowMapOffsetScale;   // Offset:  112
-};
+#include <core/render/preview/lighting.h>
 
 // Class to hold information related to the general render scene.
 // Not directly related to any individual type of preview/render setup.
@@ -36,18 +14,28 @@ public:
 	ID3D11Buffer* globalLightsBuffer;
 	ID3D11ShaderResourceView* globalLightsSRV;
 
-	std::vector<HardwareLight> globalLights;
+	ID3D11Buffer* cubemapSamplesBuffer;
+	ID3D11ShaderResourceView* cubemapSamplesSRV;
 
-	void CreateOrUpdateLights(ID3D11Device* device, ID3D11DeviceContext* ctx);
+	std::vector<HardwareLight> globalLights;
+	std::vector<float> cubemapSamples;
+
+	// Update the HardwareLight structures in the globalLights vector
+	void UpdateHardwareLights();
+	void UpdateCubemapSamples();
+
+	// Map and update the globalLights d3d buffer
+	void MapAndUpdateLightBuffer(ID3D11Device* device, ID3D11DeviceContext* ctx);
+	void MapAndUpdateCubemapSamplesBuffer(ID3D11Device* device, ID3D11DeviceContext* ctx);
 
 	FORCEINLINE bool NeedsLightingUpdate() const
 	{
 		return this->invalidatedLighting || this->ShouldRecreateLightBuffer();
 	}
 
-	FORCEINLINE void BindLightsSRV(ID3D11DeviceContext* ctx)
+	FORCEINLINE bool NeedsCubemapSmpUpdate() const
 	{
-		ctx->PSSetShaderResources(62u, 1u, &this->globalLightsSRV);
+		return this->ShouldRecreateCubemapSmpBuffer();
 	}
 
 private:
@@ -57,14 +45,18 @@ private:
 	// usually not result in recreation of the buffer.
 	FORCEINLINE void InvalidateLights() { invalidatedLighting = true; };
 	FORCEINLINE bool ShouldRecreateLightBuffer() const { return !this->initialLightSetupComplete || this->numLightsInBuffer != globalLights.size(); };
+	
+	FORCEINLINE bool ShouldRecreateCubemapSmpBuffer() const { return !this->initialCubemapSmpSetupComplete || this->numCubemapSamples != cubemapSamples.size(); };
 
 	// Number of lights in the current version of the Global Lights Buffer
 	// This is stored separately to just using globalLights.size(), since the globalLights vector
 	// may be updated between frames, and we should only have to recreate the buffer whenever there are changes to the size.
 	size_t numLightsInBuffer;
+	size_t numCubemapSamples;
 
 	// If lighting data needs to be updated without the vector being resized.
 	bool invalidatedLighting : 1;
 	// If the initial version of the lighting buffer has been created.
 	bool initialLightSetupComplete : 1;
+	bool initialCubemapSmpSetupComplete : 1;
 };

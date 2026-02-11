@@ -19,6 +19,7 @@ public:
     CTexture() = default;
     CTexture(const char* const buf, const size_t bufSize, const size_t width, const size_t height, const DXGI_FORMAT imgFormat, const size_t arraySize, const size_t mipLevels);
     CTexture(ID3D11Device* const device, const char* const buf, const size_t bufSize, const size_t width, const size_t height, const DXGI_FORMAT imgFormat, const size_t arraySize, const size_t mipLevels);
+    CTexture(void* scratchImg, ID3D11Device* const device);
     ~CTexture();
 
     bool CreateShaderResourceView(ID3D11Device* const device);
@@ -69,6 +70,7 @@ struct DXMeshDrawData_t
     ID3D11Buffer* indexBuffer;
 
     ID3D11Buffer* uberStaticBuf;
+    ID3D11Buffer* uberDynamicBuf;
 
     ID3D11VertexShader* vertexShader;
     ID3D11PixelShader* pixelShader;
@@ -89,6 +91,7 @@ struct DXMeshDrawData_t
 
     bool visible;
     bool doFrustumCulling;
+    bool hasGameShaders;
 };
 
 struct VS_TransformConstants
@@ -102,10 +105,10 @@ struct CBufCommonPerCamera
 {
     float c_gameTime;
     float3 c_cameraOrigin;
-    XMMATRIX c_cameraRelativeToClip;
+    XMFLOAT4X4 c_cameraRelativeToClip;
     int c_frameNum;
     float3 c_cameraOriginPrevFrame;
-    XMMATRIX c_cameraRelativeToClipPrevFrame;
+    XMFLOAT4X4 c_cameraRelativeToClipPrevFrame;
     float4 c_clipPlane;
 
     struct FogUnion
@@ -207,12 +210,6 @@ struct CBufModelInstance
 };
 static_assert(sizeof(CBufModelInstance) == 208);
 
-struct DXShaderResourceDesc_t
-{
-    UINT bindPoint;
-    ID3D11ShaderResourceView* resourceView;
-};
-
 class CDXDrawData
 {
 public:
@@ -221,7 +218,9 @@ public:
     ~CDXDrawData()
     {
         DX_RELEASE_PTR(transformsBuffer);
+        DX_RELEASE_PTR(modelInstanceBuffer);
         DX_RELEASE_PTR(inputLayout);
+        DX_RELEASE_PTR(boneMatrixBuffer);
         for (auto& meshBuffer : meshBuffers)
         {
             DX_RELEASE_PTR(meshBuffer.vertexBuffer);
@@ -232,6 +231,7 @@ public:
     std::vector<DXMeshDrawData_t> meshBuffers;
 
     ID3D11Buffer* transformsBuffer;
+    ID3D11Buffer* modelInstanceBuffer;
 
     ID3D11Buffer* boneMatrixBuffer;
     ID3D11ShaderResourceView* boneMatrixSRV;
@@ -241,12 +241,24 @@ public:
     CShader* pixelShader;
     CShader* vertexShader;
 
-    std::vector<DXShaderResourceDesc_t> pixelShaderResources;
-    std::vector<DXShaderResourceDesc_t> vertexShaderResources;
+    std::unordered_map<uint8_t, ID3D11ShaderResourceView*> pixelShaderResources;
+    std::unordered_map<uint8_t, ID3D11ShaderResourceView*> vertexShaderResources;
 
     char* modelName;
 
     Vector position;
+
+    void SetPSResource(uint8_t bindPoint, ID3D11ShaderResourceView* srv)
+    {
+        if (!pixelShaderResources.contains(bindPoint))
+            pixelShaderResources[bindPoint] = srv;
+    };
+
+    void SetVSResource(uint8_t bindPoint, ID3D11ShaderResourceView* srv)
+    {
+        if (!vertexShaderResources.contains(bindPoint))
+            vertexShaderResources[bindPoint] = srv;
+    };
 };
 
 class CDXCamera
@@ -282,7 +294,7 @@ class CDXParentHandler
 {
 public:
 	CDXParentHandler() = default;
-	CDXParentHandler(const HWND windowHandle) : m_windowHandle(windowHandle), m_pDevice(nullptr), m_pDeviceContext(nullptr), m_pSwapChain(nullptr), m_pMainView(nullptr), m_pRasterizerState(nullptr), m_pShaderManager(nullptr), m_pCamera(nullptr)
+	CDXParentHandler(const HWND windowHandle) : m_windowHandle(windowHandle), m_pDevice(nullptr), m_pDeviceContext(nullptr), m_pSwapChain(nullptr), m_pMainView(nullptr), m_pRasterizerState(nullptr), m_pShaderManager(nullptr), m_pCamera(nullptr), m_CubemapTex(nullptr), m_CubemapTexSRV(nullptr)
     {
         m_UIState.ClearAssetData();
     };
@@ -330,7 +342,7 @@ public:
         return m_pMonitors[mon0].m_pAdapter == m_pMonitors[mon1].m_pAdapter;
     };
 
-    inline const XMMATRIX& GetProjMatrix() { return m_wndProjMatrix; };
+    inline const XMMATRIX& GetProjMatrix() { return m_projectionMatrix; };
 
     inline CDXShaderManager* GetShaderManager() const { return m_pShaderManager; };
 
@@ -339,6 +351,12 @@ public:
     inline CDXScene& GetScene() { return m_Scene; };
 
     inline CUIState& GetUIState() { return m_UIState; };
+
+    inline ID3D11ShaderResourceView* GetCubemapSRV() { return m_CubemapTexSRV; };
+    inline ID3D11ShaderResourceView* GetShadowMapSRV() { return m_shadowMapTexSRV; };
+    inline ID3D11ShaderResourceView* GetCloudMaskSRV() { return m_cloudMaskSRV; };
+    inline ID3D11ShaderResourceView* GetCSMDepthAtlasSamplerSRV() { return m_CSMDepthAtlasSamplerSRV; };
+    inline ID3D11ShaderResourceView* GetStaticShadowTexSRV() { return m_staticShadowTextureSRV; };
 
 private:
     bool CreateDepthBuffer(ID3D11Texture2D* frameBuffer);
@@ -378,11 +396,27 @@ private:
     uint32_t m_numMonitors;
     uint32_t m_activeMonitor;
 
-    XMMATRIX m_wndProjMatrix;
+    XMMATRIX m_projectionMatrix;
 
     CDXShaderManager* m_pShaderManager;
 
     CDXCamera* m_pCamera;
+
+    ID3D11Texture2D* m_CubemapTex;
+    ID3D11ShaderResourceView* m_CubemapTexSRV;
+
+    ID3D11Texture2D* m_shadowMapTex;
+    ID3D11ShaderResourceView* m_shadowMapTexSRV;
+
+    ID3D11Texture2D* m_cloudMask;
+    ID3D11ShaderResourceView* m_cloudMaskSRV;
+
+    ID3D11Texture2D* m_CSMDepthAtlasSampler;
+    ID3D11ShaderResourceView* m_CSMDepthAtlasSamplerSRV;
+
+    ID3D11Texture2D* m_staticShadowTexture;
+    ID3D11ShaderResourceView* m_staticShadowTextureSRV;
+
 
     CDXScene m_Scene;
 

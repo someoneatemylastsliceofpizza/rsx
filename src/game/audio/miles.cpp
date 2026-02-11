@@ -44,10 +44,8 @@ bool CMilesAudioBank::IsValidSource(const MilesSource_t* source) const
 
 void CMilesAudioBank::DiscoverStreamingFiles()
 {
-	const std::filesystem::path filePath(m_filePath);
-
-	assert(filePath.has_parent_path());
-	std::filesystem::path dirPath = filePath.parent_path();
+	assert(GetFilePath().has_parent_path());
+	std::filesystem::path dirPath = GetFilePath().parent_path();
 
 	this->m_streamStates = 0;
 
@@ -244,7 +242,7 @@ const bool CMilesAudioBank::ParseFile(const std::string& path)
 {
 	Log("MBNK: Trying to load file: %s\n", path.c_str());
 
-	m_filePath = path;
+	SetFilePath(path);
 
 	if (!FileSystem::ReadFileData(path, &m_fileBuf))
 		return false;

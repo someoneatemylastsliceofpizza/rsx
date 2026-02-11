@@ -122,9 +122,7 @@ public:
     }
 
     void SetFileName(const char* fileName) { strncpy_s(m_fileName, 64, fileName, strnlen_s(fileName, 64)); }
-    void SetFilePath(const std::filesystem::path& path) { m_filePath = path; }
     const char* const GetFileName() const { return m_fileName; }
-    const std::filesystem::path& GetFilePath() const { return m_filePath; }
 
     inline const int Version() const { return m_version; }
     inline const int FileCount() const { return m_fileCount; }
@@ -146,7 +144,6 @@ public:
     inline const Chunk_t* const GetChunk(const int idx) const { return &m_chunks.at(idx); }
 
 private:
-    std::filesystem::path m_filePath;
     char m_fileName[BP_PAK_FILENAME_SIZE];
 
     int m_version;
