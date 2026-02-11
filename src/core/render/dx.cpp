@@ -693,6 +693,29 @@ bool CDXParentHandler::CreateMisc()
 
     m_pCamera->position = Vector(0, 0, -50.f);
 
+    if (!GenerateTexture2D(UINT32_MAX, sizeof(uint32_t), DXGI_FORMAT_R8G8B8A8_UNORM, 256, 256, 1, 0, true, &m_CubemapTex, &m_CubemapTexSRV))
+        return false;
+
+    if (!GenerateTexture2D(UINT32_MAX, sizeof(uint32_t), DXGI_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, 0, false, &m_shadowMapTex, &m_shadowMapTexSRV))
+        return false;
+
+    if (!GenerateTexture2D(UINT32_MAX, sizeof(uint32_t), DXGI_FORMAT_R8G8B8A8_UNORM, 1, 1, 1, 0, false, &m_cloudMask, &m_cloudMaskSRV))
+        return false;
+
+    if (!GenerateTexture2D(0u, sizeof(uint32_t), DXGI_FORMAT_R24G8_TYPELESS, 1536, 512, 1, 0, false, &m_CSMDepthAtlasSampler, &m_CSMDepthAtlasSamplerSRV))
+        return false;
+
+    if (!GenerateTexture2D(UINT32_MAX, sizeof(uint16_t), DXGI_FORMAT_R16_TYPELESS, 2048, 2048, 1, 0, false, &m_staticShadowTexture, &m_staticShadowTextureSRV))
+        return false;
+
+    // todo: use an actual cubemap
+    //DirectX::TexMetadata meta;
+    //DirectX::ScratchImage img;
+    //if (FAILED(DirectX::LoadFromDDSFile(L"C:\\Workspace\\RSX_AMP\\IndirectSpecularTextureCubeArray.dds", DirectX::DDS_FLAGS_NONE, &meta, img)))
+    //    return false;
+
+    //m_IndirectSpecularTextureCubeArray = new CTexture(&img, g_dxHandler->GetDevice());
+
     return true;
 }
 
@@ -719,6 +742,18 @@ void CDXParentHandler::CleanupD3D()
 
     DX_RELEASE_PTR(m_CubemapTex);
     DX_RELEASE_PTR(m_CubemapTexSRV);
+
+    DX_RELEASE_PTR(m_shadowMapTex);
+    DX_RELEASE_PTR(m_shadowMapTexSRV);
+
+    DX_RELEASE_PTR(m_cloudMask);
+    DX_RELEASE_PTR(m_cloudMaskSRV);
+
+    DX_RELEASE_PTR(m_CSMDepthAtlasSampler);
+    DX_RELEASE_PTR(m_CSMDepthAtlasSamplerSRV);
+
+    DX_RELEASE_PTR(m_staticShadowTexture);
+    DX_RELEASE_PTR(m_staticShadowTextureSRV);
 }
 
 void CDXParentHandler::HandleResize(const uint16_t x, const uint16_t y)
