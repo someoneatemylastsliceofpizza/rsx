@@ -59,6 +59,13 @@
 
 #include <core/cache/cachedb.h>
 
+#include <rapidjson/rapidjson.h>
+#include "rapidjson/document.h"
+#include "rapidjson/writer.h"
+#include "rapidjson/stringbuffer.h"
+#include "rapidjson/prettywriter.h"
+#include "rapidjson/error/en.h"
+
 #pragma warning (disable: 4201)
 
 #define DISABLE_WARNING(num) \
@@ -116,7 +123,6 @@
 #define PAKLOAD_PATCHING_ANY
 #endif
 
-#define MILES_RADAUDIO
 //#define XB_XECRPYT
 //#define XB_XCOMPRESS
 #define SWITCH_SWIZZLE

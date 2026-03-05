@@ -502,7 +502,7 @@ void* PreviewMaterialAsset(CAsset* const asset, const bool firstFrameForAsset)
     if (materialAsset->materialType != MaterialShaderType_t::_TYPE_LEGACY)
     {
         ImGui::SameLine();
-        g_pImGuiHandler->HelpMarker(s_MaterialShaderTypeHelpText);
+        ImGuiExt::HelpMarker(s_MaterialShaderTypeHelpText);
     }
 
     ImGui::Text("Shaderset: %s (0x%llx)", materialAsset->shaderSetAsset ? materialAsset->shaderSetAsset->GetAssetName().c_str() : "unloaded", materialAsset->shaderSet);
@@ -512,7 +512,7 @@ void* PreviewMaterialAsset(CAsset* const asset, const bool firstFrameForAsset)
     {
         ImGui::Text("Material Snapshot: %s (0x%llx)", materialAsset->snapshotAsset ? materialAsset->snapshotAsset->GetAssetName().c_str() : "unloaded", materialAsset->snapshotMaterial);
         ImGui::SameLine();
-        g_pImGuiHandler->HelpMarker("If a material uses a snapshot, the snapshot needs to be loaded for DX States preview to be accurate.\n");
+        ImGuiExt::HelpMarker("If a material uses a snapshot, the snapshot needs to be loaded for DX States preview to be accurate.\n");
     }
 
     // [rika]: depth materials here
@@ -605,7 +605,7 @@ void* PreviewMaterialAsset(CAsset* const asset, const bool firstFrameForAsset)
                                 if (!item->HasResourceType())
                                 {
                                     ImGui::SameLine();
-                                    g_pImGuiHandler->HelpMarker("The material asset does not provide any resource type information for this texture entry");
+                                    ImGuiExt::HelpMarker("The material asset does not provide any resource type information for this texture entry");
                                 }
                             }
 
@@ -818,6 +818,7 @@ static inline void TextureNameGenerated(MaterialTextureExportInfo_s& info, const
     if (txtrType != eTextureType::_UNUSED)
     {
         info.exportName = std::format("{}{}", materialStem, GetTextureSuffixByType(txtrType));
+
         return;
     }
     
@@ -853,6 +854,8 @@ void ParseMaterialTextureExportInfo(std::unordered_map<uint32_t, MaterialTexture
         RemoveRenderPassSuffix(materialStem);
     }
 
+    const std::string oldMaterialStem = materialStem;
+    std::unordered_map<eTextureType, uint32_t> typeCounts;
     for (const TextureAssetEntry_t& entry : materialAsset->txtrAssets)
     {
         CPakAsset* const txtrAsset = entry.asset;
@@ -862,6 +865,10 @@ void ParseMaterialTextureExportInfo(std::unordered_map<uint32_t, MaterialTexture
 
         MaterialTextureExportInfo_s info(exportPath, txtrAsset);
         TextureAsset* const thisTexture = txtrAsset->extraData<TextureAsset* const>();
+
+        const int oldCount = typeCounts[thisTexture->type];
+        if (oldCount > 0)
+            materialStem = oldMaterialStem + std::format("_{}", oldCount);
 
         // [rika]: when model export uses this function it can't it TextureNameReal as it could change the export path so that it's not local
         // to the model, which for the time being is not supported. modeled currently calls this with nameSetting as eTextureExportName::TXTR_NAME_SMTC so it's a non issue.
@@ -912,6 +919,8 @@ void ParseMaterialTextureExportInfo(std::unordered_map<uint32_t, MaterialTexture
             break;
         }
         }
+
+        typeCounts[thisTexture->type]++;
 
         // check if this texture is a normal
         const DXGI_FORMAT fmt = s_PakToDxgiFormat[thisTexture->imgFormat];

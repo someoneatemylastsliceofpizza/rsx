@@ -1,6 +1,9 @@
 #pragma once
 #include <game/asset.h>
 
+constexpr int MILES_DECODER_BINKA = 2;
+constexpr int MILES_DECODER_RADA = 6;
+
 // Used for offsets that are initially stored as 32-bit values and then converted to
 // pointers at runtime
 union OffsetPtr_t
@@ -28,11 +31,11 @@ struct MilesASIDecoder_t
 	void* ASI_stream_parse_metadata; // 8
 	void* ASI_open_stream; // 16
 	void* ASI_notify_seek; // 24
-	void* ASI_stream_seek_to_frame; // 32
-	void* ASI_stream_seek_direct; // 40
+	void* ASI_stream_seek_to_frame; // 32 - not used
+	void* ASI_stream_seek_direct; // 40 - not used
 	void* ASI_decode_block; // 48
 	void* ASI_get_block_size; // 56
-	void* ASI_unk_dealloc_maybe; // 64
+	void* ASI_unk_dealloc_maybe; // 64 - not used
 };
 
 typedef uint32_t(*ASI_read_stream_f)(char*, uint64_t, void*); // buffer, readAmount, userData
@@ -43,6 +46,8 @@ typedef size_t(*ASI_stream_seek_to_frame_f)(void*, size_t, size_t*, uint32_t*);
 typedef size_t(*ASI_stream_seek_direct_f)(const char*, size_t, size_t, size_t*, size_t*);
 typedef size_t(*ASI_decode_block_f)(void*, const char*, size_t, void*, size_t, uint32_t*, uint32_t*);
 typedef void(*ASI_get_block_size_f)(void*, const char*, size_t, uint32_t*, uint32_t*, uint32_t*);
+
+typedef void(*ASI_dealloc_f)(void*);
 
 
 // it seems that this struct has never changed.... yet...
@@ -73,7 +78,7 @@ struct MilesSource_v28_t
 	char gap_1B[21];
 
 	uint32_t streamHeaderSize;
-	uint32_t streamDataSize;
+	uint32_t sampleCount;
 	uint64_t streamHeaderOffset;
 	uint64_t streamDataOffset;
 	char gap_end[16];
@@ -95,7 +100,7 @@ struct MilesSource_v39_t
 	char gap[16];
 
 	uint32_t streamHeaderSize;
-	uint32_t streamDataSize;
+	uint32_t sampleCount;
 	uint64_t streamHeaderOffset;
 	uint64_t streamDataOffset;
 	uint64_t minusOne;
@@ -116,7 +121,7 @@ struct MilesSource_v48_t
 	char gap[16];
 
 	uint32_t streamHeaderSize;
-	uint64_t streamDataSize;
+	uint64_t sampleCount;
 	uint64_t streamHeaderOffset;
 	uint64_t streamDataOffset;
 	uint64_t minusOne;
@@ -129,21 +134,21 @@ struct MilesSource_t
 {
 	MilesSource_t(const MilesSource_v39_t* const a) :
 		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
-		streamDataSize(a->streamDataSize), streamHeaderSize(a->streamHeaderSize),
+		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
 		nameOffset(a->nameOffset),
 		languageIdx(a->languageIdx), patchIdx(a->patchIdx)
 	{};
 
 	MilesSource_t(const MilesSource_v28_t* const a) :
 		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
-		streamDataSize(a->streamDataSize), streamHeaderSize(a->streamHeaderSize),
+		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
 		nameOffset(a->nameOffset),
 		languageIdx(a->languageIdx), patchIdx(a->patchIdx)
 	{};
 
 	MilesSource_t(const MilesSource_v48_t* const a) :
 		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
-		streamDataSize(a->streamDataSize), streamHeaderSize(a->streamHeaderSize),
+		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
 		nameOffset(a->nameOffset),
 		languageIdx(a->languageIdx), patchIdx(a->patchIdx)
 	{};
@@ -151,12 +156,11 @@ struct MilesSource_t
 	uint64_t nameOffset;
 	uint64_t streamDataOffset;
 	uint64_t streamHeaderOffset;
-	uint64_t streamDataSize;
+	uint64_t sampleCount;
 	uint32_t streamHeaderSize;
 
 	uint16_t languageIdx;
 	uint16_t patchIdx;
-
 };
 
 /*
@@ -179,13 +183,40 @@ MBNK Versions:
 46 - Apex Legends Season 23.1 -> Season 24.1
 */
 
-
 struct MilesBankHeaderShort_t
 {
 	int magic;
 	int version;
-	uint32_t dataSize;
+	uint32_t fileSize;
 };
+
+struct MilesBankHeader_v13_t
+{
+	int magic;
+	int version;
+	uint32_t fileSize;
+
+	int bankMagic;
+
+	char gap[0x38];
+
+	OffsetPtr_t sourceOffset;
+	OffsetPtr_t localisedSourceOffset;
+
+	char gap1[0x18];
+	OffsetPtr_t stringTableOffset;
+
+	char gap2[0x24];
+	uint32_t localisedSourceCount;
+	uint32_t sourceCount;
+	uint32_t patchCount;
+	uint32_t eventCount;
+};
+
+static_assert(offsetof(MilesBankHeader_v13_t, sourceOffset) == 0x48);
+static_assert(offsetof(MilesBankHeader_v13_t, stringTableOffset) == 0x70);
+static_assert(offsetof(MilesBankHeader_v13_t, sourceCount) == 0xA0);
+
 
 struct MilesBankHeader_v28_t
 {
@@ -317,13 +348,28 @@ public:
 	// the base name for the bank is always at the start of the string table
 	const char* GetBankStem() const { return stringTable; };
 
-	const std::vector<const char*>& GetLanguageNames() const { return m_languageNames; }
-
-	std::string GetStreamingFileNameForSource(const MilesSource_t* source) const;
+	const std::vector<const char*>& GetLanguageNames() const { return languageNames; }
 
 	const char* GetString(uint64_t offset) const
 	{
 		return reinterpret_cast<const char*>(stringTable) + offset;
+	}
+
+	std::string GetStreamingFileNameForSource(const MilesSource_t* source) const
+	{
+		std::string sourceStreamFileName = GetBankStem();
+
+		if (source->languageIdx != 0xFFFF)
+			sourceStreamFileName += std::format("_{}", GetLanguageNames()[source->languageIdx]);
+		else
+			sourceStreamFileName += "_stream";
+
+		if (source->patchIdx)
+			sourceStreamFileName += std::format("_patch_{}.mstr", source->patchIdx);
+		else
+			sourceStreamFileName += ".mstr";
+
+		return sourceStreamFileName;
 	}
 
 	bool IsValidSource(const MilesSource_t* source) const;
@@ -340,7 +386,7 @@ private:
 
 	std::shared_ptr<char[]> m_fileBuf;
 
-	std::vector<const char*> m_languageNames;
+	std::vector<const char*> languageNames;
 
 	uint32_t buildTag;
 	uint32_t bankHash;
@@ -355,8 +401,23 @@ private:
 	void* audioEvents;
 	const char* stringTable;
 
-
 	int m_version;
+
+	void Construct(const MilesBankHeader_v13_t* const header)
+	{
+		this->buildTag = 0;// header->buildTag;
+		//this->bankHash = header->bankHash; // not sure if this var exists in v28
+
+		// total source count including all languages
+		this->sourceCount = header->sourceCount + (header->localisedSourceCount * (this->languageCount - 1));
+		this->eventCount = header->eventCount;
+
+		this->localisedSourceCount = header->localisedSourceCount;
+
+		this->audioSources = m_fileBuf.get() + header->sourceOffset.offset;
+		//this->audioEvents = m_fileBuf.get() + header->eventOffset.offset; // this isn't even used anyway. i'll finish the struct when it's needed
+		this->stringTable = m_fileBuf.get() + header->stringTableOffset.offset;
+	}
 
 	void Construct(const MilesBankHeader_v28_t* const header)
 	{
@@ -459,3 +520,4 @@ private:
 
 // Decoders
 MilesASIDecoder_t* GetRadAudioDecoder();
+MilesASIDecoder_t* GetBinkAudioDecoder();

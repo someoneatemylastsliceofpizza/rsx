@@ -48,16 +48,20 @@
     <ClInclude Include="core\render.h" />
     <ClInclude Include="core\shaderexp\multishader.h" />
     <ClInclude Include="core\splash.h" />
+    <ClInclude Include="core\update\update.h" />
     <ClInclude Include="core\utils\buffermanager.h" />
     <ClInclude Include="core\utils\cli_parser.h" />
     <ClInclude Include="core\utils\crc32.h" />
+    <ClInclude Include="core\utils\curlutils.h" />
     <ClInclude Include="core\utils\exportsettings.h" />
     <ClInclude Include="core\utils\fileio.h" />
+    <ClInclude Include="core\utils\jsonutils.h" />
     <ClInclude Include="core\utils\keyvalue_parser.h" />
     <ClInclude Include="core\utils\ramen.h" />
     <ClInclude Include="core\utils\textbuffer.h" />
     <ClInclude Include="core\utils\thread.h" />
     <ClInclude Include="core\utils\utils_general.h" />
+    <ClInclude Include="core\version.h" />
     <ClInclude Include="core\window.h" />
     <ClInclude Include="game\asset.h" />
     <ClInclude Include="game\audio\miles.h" />
@@ -169,9 +173,12 @@
     <ClCompile Include="core\render\ui\itemflav_window.cpp" />
     <ClCompile Include="core\render\ui\log_window.cpp" />
     <ClCompile Include="core\splash.cpp" />
+    <ClCompile Include="core\update\update.cpp" />
     <ClCompile Include="core\utils\cli_parser.cpp" />
+    <ClCompile Include="core\utils\curlutils.cpp" />
     <ClCompile Include="core\utils\exportsettings.cpp" />
     <ClCompile Include="core\utils\fileio.cpp" />
+    <ClCompile Include="core\utils\jsonutils.cpp" />
     <ClCompile Include="core\utils\keyvalue_parser.cpp" />
     <ClCompile Include="core\utils\ramen.cpp" />
     <ClCompile Include="core\utils\utils_general.cpp" />
@@ -347,16 +354,22 @@
     <OutDir>..\bin\$(Configuration)\</OutDir>
     <IntDir>..\build\$(Configuration)\$(ProjectName)\</IntDir>
     <IncludePath>$(ProjectDir);$(ProjectDir)thirdparty\imgui\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">
     <OutDir>..\bin\$(Configuration)\</OutDir>
     <IntDir>..\build\$(Configuration)\$(ProjectName)\</IntDir>
     <IncludePath>$(ProjectDir);$(ProjectDir)thirdparty\imgui\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>..\bin\$(Configuration)\</OutDir>
     <IntDir>..\build\$(Configuration)\$(ProjectName)\</IntDir>
     <IncludePath>$(ProjectDir);$(ProjectDir)thirdparty\imgui\;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir);$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
+  </PropertyGroup>
+  <PropertyGroup Label="Vcpkg">
+    <VcpkgEnableManifest>true</VcpkgEnableManifest>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
@@ -373,7 +386,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;thirdparty\binka\binka_ue_decode_win64_static_x64D.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions> /ignore:4099 %(AdditionalOptions)</AdditionalOptions>
       <IgnoreAllDefaultLibraries>
       </IgnoreAllDefaultLibraries>
@@ -407,7 +420,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>d3d11.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>d3d11.lib;thirdparty\binka\binka_ue_decode_win64_static_x64D.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions> /ignore:4099 %(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>
@@ -440,7 +453,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>thirdparty\binka\binka_ue_decode_win64_static_x64D.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalOptions> /ignore:4099 %(AdditionalOptions)</AdditionalOptions>
       <IgnoreSpecificDefaultLibraries>
       </IgnoreSpecificDefaultLibraries>

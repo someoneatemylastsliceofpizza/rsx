@@ -69,7 +69,8 @@ void OnCLILoadComplete(const CCommandLine* const cli)
     // Hold this thread until asset loading is done on the newly spawned threads
     while (true)
     {
-        if (g_assetData.m_donePostLoad)
+        // If we are exporting, wait until post load. Otherwise only wait until load is done
+        if (g_assetData.m_donePostLoad || (!cli->HasParam("-export") && g_assetData.m_doneLoad))
             break;
     }
 

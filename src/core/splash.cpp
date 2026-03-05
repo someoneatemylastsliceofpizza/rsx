@@ -100,21 +100,21 @@ void DrawSplashScreen()
             PostMessageA(windowHandle, WM_CUSTOM_DESTROY, 0, 0);
         }).detach();
 
-        MSG msg = {};
-        while (msg.message != WM_QUIT)
+    MSG msg = {};
+    while (msg.message != WM_QUIT)
+    {
+        while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         {
-            while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
-            {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
 
-                if (msg.message == WM_QUIT)
-                    break;
-            }
-
-            Sleep(100);
+            if (msg.message == WM_QUIT)
+                break;
         }
 
-        UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
+        Sleep(100);
+    }
+
+    UnregisterClassW(windowClass.lpszClassName, windowClass.hInstance);
 }
 #endif // #if defined(SPLASHSCREEN)

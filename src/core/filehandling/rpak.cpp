@@ -21,6 +21,8 @@ void HandlePakLoad(std::vector<std::string> filePaths)
         g_assetData.m_patchMasterEntries.clear();
         g_assetData.m_pakLoadStatusMap.clear();
     }
+
+    g_assetData.m_doneLoad = false;
     
     for (const std::string& path : filePaths)
     {
@@ -87,6 +89,7 @@ void HandlePakLoad(std::vector<std::string> filePaths)
         }
         ++pakLoadingProgress;
     }
+    g_assetData.m_doneLoad = true;
     g_pImGuiHandler->FinishProgressBarEvent(pakLoadProgress);
 }
 

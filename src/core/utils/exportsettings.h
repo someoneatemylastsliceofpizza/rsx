@@ -34,6 +34,13 @@ struct ExportSettings_t
 
     std::filesystem::path exportDirectory;
 
+    void SetDefaultValues(const CCommandLine* cli)
+    {
+        SetExportDirectory(std::filesystem::current_path() / EXPORT_DIRECTORY_NAME);
+
+        SetFromCLI(cli);
+    }
+
     void SetFromCLI(const CCommandLine* cli);
 
     void SetExportDirectory(const std::filesystem::path& exportPath)

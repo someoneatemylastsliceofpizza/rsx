@@ -79,6 +79,7 @@ static void UtilSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandler*
         ImGuiReadSetting("ExportThreads=%u", cfg->exportThreadCount, i, uint32_t);
         ImGuiReadSetting("ParseThreads=%u", cfg->parseThreadCount, i, uint32_t);
         ImGuiReadSetting("CompressionLevel=%u", cfg->compressionLevel, i, uint32_t);
+        ImGuiReadSetting("CheckForUpdates=%u", cfg->checkForUpdates, i, int);
     }
 }
 
@@ -91,6 +92,7 @@ static void UtilSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandler*
     buf->appendf("ExportThreads=%u\n", UtilsConfig->exportThreadCount);
     buf->appendf("ParseThreads=%u\n", UtilsConfig->parseThreadCount);
     buf->appendf("CompressionLevel=%u\n", UtilsConfig->compressionLevel);
+    buf->appendf("CheckForUpdates=%i\n", UtilsConfig->checkForUpdates ? 1 : 0);
     buf->append("\n");
 }
 
@@ -430,18 +432,33 @@ void ImGuiHandler::SetStyle()
     style.ScrollbarRounding = 3.0f;
 }
 
-void ImGuiHandler::HelpMarker(const char* const desc)
-{
-    assert(desc);
-    ImGui::TextDisabled("(?)");
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip())
+namespace ImGuiExt {
+    void HelpMarker(const char* const desc)
     {
-        ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
-        ImGui::TextUnformatted(desc);
-        ImGui::PopTextWrapPos();
-        ImGui::EndTooltip();
+        assert(desc);
+        ImGui::TextDisabled("(?)");
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip())
+        {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::TextUnformatted(desc);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
     }
-}
+
+    void Tooltip(const char* const text)
+    {
+        assert(text);
+
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort) && ImGui::BeginTooltip())
+        {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::TextUnformatted(text);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
+};
 
 const ProgressBarEvent_t* const ImGuiHandler::AddProgressBarEvent(const char* const eventName, const uint32_t eventNum, std::atomic<uint32_t>* const remainingEvents, const bool isInverted)
 {
@@ -600,6 +617,8 @@ ImGuiHandler::ImGuiHandler()
 
     // standard config setting for compression
     cfg.compressionLevel = eCompressionLevel::CMPR_LVL_VERYFAST;
+
+    cfg.checkForUpdates = true;
 
     memset(pbEvents, 0, sizeof(pbEvents));
     for (int8_t i = PB_SIZE - 1; i >= 0; --i) // in reverse order

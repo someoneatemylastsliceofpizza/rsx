@@ -44,6 +44,16 @@ inline char* const removeExtension(char* const src)
 	return src;
 }
 
+inline void AppendSlash(std::string& svInput, const char separator = '\\')
+{
+	char lchar = svInput[svInput.size() - 1];
+
+	if (lchar != '\\' && lchar != '/')
+	{
+		svInput.push_back(separator);
+	}
+}
+
 // please do not call this with invalid pointers thank you
 FORCEINLINE const bool IsStringZeroLength(const char* const str)
 {

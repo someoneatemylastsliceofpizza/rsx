@@ -94,6 +94,9 @@
     <Filter Include="core\render\preview">
       <UniqueIdentifier>{50a690ff-57d0-4929-89e8-cc6bf2f31238}</UniqueIdentifier>
     </Filter>
+    <Filter Include="core\update">
+      <UniqueIdentifier>{f819a795-d086-4c82-9fad-17af48e6abb4}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="pch.h">
@@ -429,6 +432,18 @@
     <ClInclude Include="core\render\preview\preview.h">
       <Filter>core\render\preview</Filter>
     </ClInclude>
+    <ClInclude Include="core\utils\jsonutils.h">
+      <Filter>core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="core\utils\curlutils.h">
+      <Filter>core\utils</Filter>
+    </ClInclude>
+    <ClInclude Include="core\update\update.h">
+      <Filter>core\update</Filter>
+    </ClInclude>
+    <ClInclude Include="core\version.h">
+      <Filter>core</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
@@ -730,6 +745,15 @@
     </ClCompile>
     <ClCompile Include="core\render\ui\itemflav_window.cpp">
       <Filter>core\render\ui</Filter>
+    </ClCompile>
+    <ClCompile Include="core\utils\jsonutils.cpp">
+      <Filter>core\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="core\utils\curlutils.cpp">
+      <Filter>core\utils</Filter>
+    </ClCompile>
+    <ClCompile Include="core\update\update.cpp">
+      <Filter>core\update</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

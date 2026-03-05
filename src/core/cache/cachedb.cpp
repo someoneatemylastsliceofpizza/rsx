@@ -11,7 +11,7 @@ bool CCacheDBManager::SaveToFile(const std::string& path)
 
 	if (fileHandle == INVALID_HANDLE_VALUE)
 	{
-		Log("Cache failed to get a file handle after waiting, cache file will not be updated...\n");
+		Log("CACHE: Failed to get a file handle after waiting, cache file will not be updated...\n");
 		return false;
 	}
 
@@ -21,7 +21,7 @@ bool CCacheDBManager::SaveToFile(const std::string& path)
 	{
 		// [rika]: update cache file from the one on disk
 		LoadFromFile(path);
-		Log("Cache reloaded after being updated by another process...\n");
+		Log("CACHE: Reloaded cache file after being updated by another process...\n");
 	}
 
 	// acquire total string size for a buffer

@@ -126,7 +126,6 @@ public:
 
     void SetNoImGui(bool state) { noImGui = state; };
 
-    void HelpMarker(const char* const desc);
 
     template <typename T>
     const ProgressBarEvent_t* const AddProgressBarEvent(const char* const eventName, const uint32_t eventNum, T const eventClass, void* const fnRemainingEvents, ProgressBarEvent_t::CancelEventCallback_f fnCancelEvents=ProgressBarEvent_t::cancelEvents)
@@ -166,6 +165,7 @@ public:
         uint32_t parseThreadCount;
         uint32_t exportThreadCount;
         uint32_t compressionLevel;
+        bool checkForUpdates;
     } cfg;
 
     struct FilterSettings_t
@@ -227,3 +227,8 @@ inline void ImGuiConstIntInputLeft(const char* label, const int val, int inputRe
 
     ImGui::InputInt(label, const_cast<int*>(&val), 0, 0, ImGuiInputTextFlags_ReadOnly | flags);
 }
+
+namespace ImGuiExt {
+    void HelpMarker(const char* const desc);
+    void Tooltip(const char* const text);
+};

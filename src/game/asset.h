@@ -475,7 +475,8 @@ public:
 	ContainerMessage_t* m_logMessages;
 	uint32_t m_numLogMessages;
 
-	bool m_donePostLoad;
+	bool m_donePostLoad : 1;
+	bool m_doneLoad : 1;
 
 	void AddAssetPostLoadCallback(uint64_t guid, AssetLoadCallback_t callback)
 	{

@@ -19,9 +19,13 @@
 #include <core/render.h>
 #include <iostream>
 #include <game/rtech/utils/bsp/bspflags.h>
+#include "version.h"
+#include "update/update.h"
+#include <game/asset.h>
+#include <core/logging/logger.h>
 
 CDXParentHandler* g_dxHandler;
-std::atomic<uint32_t> maxConcurrentThreads = 1u;
+std::atomic<uint32_t> g_maxConcurrentThreadCount = 1u;
 
 CBufferManager g_BufferManager; // called constructor on init.
 
@@ -32,7 +36,7 @@ ExportSettings_t g_ExportSettings{ .exportNormalRecalcSetting = eNormalExportRec
 };
 
 // Handle CLI to only init certain asset types.
-static void HandleAssetRegistration(const CCommandLine* const cli)
+static void RegisterAssetTypeBindings(const CCommandLine* const cli)
 {
     UNUSED(cli);
 
@@ -168,6 +172,11 @@ static void HandleAssetRegistration(const CCommandLine* const cli)
 
     // bluepoint
     InitBluepointWrappedFileAssetType();
+
+#if defined(DEBUG_NO_ASEQ_POSTLOAD)
+    Log("RSX WARNING: Built with DEBUG_NO_ASEQ_POSTLOAD. Animation Sequence assets will not be parsed.\n");
+    g_assetData.Log_Warning(nullptr, "Built with DEBUG_NO_ASEQ_POSTLOAD. Animation Sequence (aseq) assets will not work properly!");
+#endif
 }
 
 #if defined(NDEBUG) && defined(_WIN32)
@@ -203,7 +212,26 @@ void CreateConsole()
 }
 #endif
 
+void RunWindowMsgLoop()
+{
+    bool quit = false;
+    while (!quit)
+    {
+        MSG msg;
+        while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
+        {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
 
+            if (msg.message == WM_QUIT)
+                quit = true;
+        }
+        if (quit)
+            break;
+
+        HandleRenderFrame();
+    }
+}
 
 int main(int argc, char* argv[])
 {
@@ -215,27 +243,33 @@ int main(int argc, char* argv[])
     const bool noGui = cli.HasParam("-nogui");
 #endif
 
-#if defined(NDEBUG) && defined(_WIN32)
+#if !defined(_DEBUG) && defined(_WIN32)
     if (noGui)
         CreateConsole();
 #endif
 
-    // we want the visual studio debugger to be able to control the working directory
-#if defined(NDEBUG) && !defined(BUILD_NOGUI)
+#if !defined(_DEBUG) // Allow the VS debugger to control its working directory
     // this is needed to properly support drag'n'drop, it changes the current working directory to the file you drag into the exe
     // HOWEVER: this should not apply when nogui is specified, as it is expected that shorter, relative file paths can be used when running CLI
     if (!noGui && !RestoreCurrentWorkingDirectory())
     {
         return EXIT_FAILURE;
     }
-#endif // #if defined(NDEBUG)
+#endif
 
-    // Set default export directory.
-    // TODO: If/when an option for this is added to the UI, this line will need to be removed and replaced with something that reads the value from imgui.ini
-    g_ExportSettings.SetExportDirectory(std::filesystem::current_path() / EXPORT_DIRECTORY_NAME);
+    Log("Starting RSX v%s\n", VERSION_STRING);
 
-    if (noGui)
-        g_ExportSettings.SetFromCLI(&cli);
+#if 1/*!defined(_DEBUG) && */
+    GitHubReleaseInfo_s releaseInfo;
+    if (!noGui && GetLatestGitHubReleaseInformation(&releaseInfo))
+    {
+        const char* newVersionType = nullptr;
+        if ((newVersionType = releaseInfo.GetHighestDifferingVersionNumber()))
+        {
+            Log("Found a new %s release update: %s\n", newVersionType, releaseInfo.tagName.c_str());
+        }
+    }
+#endif
 
 #if defined(_WIN32)
     // https://github.com/microsoft/DirectXTex/wiki/DirectXTex#initialization
@@ -252,22 +286,20 @@ int main(int argc, char* argv[])
     g_CrashHandler.Init();
 #endif
 
+    g_ExportSettings.SetDefaultValues(&cli);
+
+    g_maxConcurrentThreadCount = CThread::GetConCurrentThreads();
+
     g_cacheDBManager.LoadFromFile((std::filesystem::current_path() / "rsx_cache_db.bin").string());
 
-    // init pak asset types
-    HandleAssetRegistration(&cli);
+    RegisterAssetTypeBindings(&cli);
 
-    // get max con-current threads.
-    maxConcurrentThreads = std::max(1u, CThread::GetConCurrentThreads());
-
-#if defined(SPLASHSCREEN)
-    if(!noGui)
-        DrawSplashScreen(); // draw splashscreen now for 2~ seconds
-#endif // #if defined(SPLASHSCREEN)
-
-#if !defined(BUILD_NOGUI)
     if (!noGui)
     {
+#if defined(SPLASHSCREEN)
+        DrawSplashScreen();
+#endif
+
         const HWND windowHandle = SetupWindow();
 
         g_dxHandler = new CDXParentHandler(windowHandle);
@@ -290,8 +322,7 @@ int main(int argc, char* argv[])
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard
             /*| ImGuiConfigFlags_NavEnableGamepad*/
             | ImGuiConfigFlags_DockingEnable
-            | ImGuiConfigFlags_ViewportsEnable
-            ;
+            | ImGuiConfigFlags_ViewportsEnable;
 
         GImGui->NavCursorVisible = false; // was NavDisableHighlight
 
@@ -299,7 +330,6 @@ int main(int argc, char* argv[])
         ImGui_ImplDX11_Init(g_dxHandler->GetDevice(), g_dxHandler->GetDeviceContext());
     }
     else
-#endif
     {
         g_dxHandler = new CDXParentHandler(NULL);
 
@@ -317,39 +347,17 @@ int main(int argc, char* argv[])
     // call after initializing dx and gui otherwise you will crash
     HandleLoadFromCommandLine(&cli);
 
-#if !defined(BUILD_NOGUI)
     if (!noGui)
-    {
-        bool quit = false;
-        while (!quit)
-        {
-            MSG msg;
-            while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
-            {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
+        RunWindowMsgLoop();
 
-                if (msg.message == WM_QUIT)
-                    quit = true;
-            }
-            if (quit)
-                break;
+    g_cacheDBManager.SaveToFile((std::filesystem::current_path() / RSX_CACHE_DB_FILENAME).string());
 
-            HandleRenderFrame();
-        }
-    }
-#endif
-
-    g_cacheDBManager.SaveToFile((std::filesystem::current_path() / "rsx_cache_db.bin").string());
-
-#if !defined(BUILD_NOGUI)
     if (!noGui)
     {
         ImGui_ImplDX11_Shutdown();
         ImGui_ImplWin32_Shutdown();
         ImGui::DestroyContext();
     }
-#endif
 
     delete g_dxHandler;
 

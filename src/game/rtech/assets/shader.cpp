@@ -664,18 +664,14 @@ bool ExportShaderAsset(CAsset* const asset, const int setting)
 {
 	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 
-	// [rexx]: SHDR v17 is temporarily disabled for export since it seems to be a little bit messed up
-	if (pakAsset->version() == 17)
-		return false;
-
-
 	const ShaderAsset* const shaderAsset = pakAsset->extraData<const ShaderAsset* const>();
-	assertm(shaderAsset, "Extra asset data should be valid at this point.");
+
+	if (!shaderAsset) return false;
 
 	// shaders with no data/invalid type need to be skipped until we properly handle them
 	if (shaderAsset->type >= eShaderType::Invalid)
 	{
-		Log("Tried to export %s with invalid shader type, skipping...\n", asset->GetAssetName().c_str());
+		Log("SHDR: Tried to export %s with invalid shader type, skipping...\n", asset->GetAssetName().c_str());
 		return false;
 	}
 
@@ -721,11 +717,10 @@ bool ExportShaderAsset(CAsset* const asset, const int setting)
 std::map<uint32_t, ShaderResource> ResourceBindingFromDXBlob(CPakAsset* const asset, D3D_SHADER_INPUT_TYPE inputType)
 {
 	const ShaderAsset* const shaderAsset = asset->extraData<const ShaderAsset* const>();
-	assertm(shaderAsset, "Extra asset data should be valid at this point.");
 
 	std::map<uint32_t, ShaderResource> bindings;
 
-	if (!shaderAsset->data)
+	if (!shaderAsset || !shaderAsset->data)
 		return bindings;
 
 	const DXBCHeader* const hdr = reinterpret_cast<DXBCHeader*>(shaderAsset->data);

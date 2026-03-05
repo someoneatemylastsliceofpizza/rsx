@@ -4,23 +4,6 @@
 #include <game/audio/wavefile.h>
 #include <game/rtech/utils/utils.h>
 
-std::string CMilesAudioBank::GetStreamingFileNameForSource(const MilesSource_t* source) const
-{
-	std::string sourceStreamFileName = GetBankStem();
-
-	if (source->languageIdx != 0xFFFF)
-		sourceStreamFileName += std::format("_{}", GetLanguageNames()[source->languageIdx]);
-	else
-		sourceStreamFileName += "_stream";
-
-	if (source->patchIdx)
-		sourceStreamFileName += std::format("_patch_{}.mstr", source->patchIdx);
-	else
-		sourceStreamFileName += ".mstr";
-
-	return sourceStreamFileName;
-}
-
 bool CMilesAudioBank::IsValidSource(const MilesSource_t* source) const
 {
 	// if the source isn't localised, we don't need to check if there is a localised stream for it
@@ -51,46 +34,35 @@ void CMilesAudioBank::DiscoverStreamingFiles()
 
 	for (auto& it : std::filesystem::directory_iterator(dirPath))
 	{
-		if (it.is_regular_file())
+		if (!it.is_regular_file() || it.path().extension() != ".mstr")
+			continue;
+
+		StreamIO stream(it.path(), eStreamIOMode::Read);
+
+		MilesStreamHeader_t header = stream.read<MilesStreamHeader_t>();
+		stream.close();
+
+		if (header.magic != 'CSTR' || header.version != 2u)
+			continue;
+
+		if (header.buildTag != this->buildTag)
+			continue;
+
+		// max shift is 1 << 31 since the state is stored in a 32-bit type
+		// i don't think there should ever be 32 patches though so i think we're good.
+		assert(header.patchIdx <= 31);
+		// assert and then skip the file to make sure that release builds don't die
+		if (header.patchIdx > 31)
+			continue;
+
+		if (header.languageIdx == UINT16_MAX)
+			this->m_streamStates |= (1 << header.patchIdx); // Indicate that a streaming file exists for this patch
+		else
 		{
-			if (it.path().extension() == ".mstr")
-			{
-				//Log("MSTR: Checking %s\n", it.path().string().c_str());
-				StreamIO stream(it.path(), eStreamIOMode::Read);
-
-				MilesStreamHeader_t header = stream.read<MilesStreamHeader_t>();
-				stream.close();
-
-				// Require 'CSTR' magic and "version" 2
-				// It's not clear if the 2 is actually a version, but it lines up
-				// with the location of the version in other MSS files so it probably is
-				if (header.magic != 'CSTR' || header.version != 2u)
-					continue;
-
-				// Require a matching build tag between the stream and the bank
-				// This ensures that the stream actually belongs to the same build as the bank
-				if (header.buildTag != this->buildTag)
-					continue;
-
-				// max shift is 1 << 31 since the state is stored in a 32-bit type
-				// i don't think there should ever be 32 patches though so i think we're good.
-				assert(header.patchIdx <= 31);
-				// assert and then skip the file to make sure that release builds don't die
-				if (header.patchIdx > 31)
-					continue;
-
-				if (header.languageIdx == 0xFFFFu)
-					// Set the bit that corresponds to this patch to 1 to indicate that
-					// the stream exists and is valid for use by this bank.
-					this->m_streamStates |= (1 << header.patchIdx);
-				else
-				{
-					if (!this->m_localisedStreamStates.contains(header.languageIdx))
-						this->m_localisedStreamStates[header.languageIdx] = 1 << header.patchIdx;
-					else
-						this->m_localisedStreamStates[header.languageIdx] |= 1 << header.patchIdx;
-				}
-			}
+			if (!this->m_localisedStreamStates.contains(header.languageIdx))
+				this->m_localisedStreamStates[header.languageIdx] = 1 << header.patchIdx;
+			else
+				this->m_localisedStreamStates[header.languageIdx] |= 1 << header.patchIdx;
 		}
 	}
 
@@ -101,6 +73,22 @@ const bool CMilesAudioBank::ParseFromHeader()
 {
 	switch (this->m_version)
 	{
+	case 13:
+	{
+		this->languageCount = 0;
+		this->languageNames = {
+			"english", "french", "german", "spanish", "italian",
+			"japanese", "polish", "portuguese", "russian", "tchinese",
+			"mspanish"
+		};
+
+		const MilesBankHeader_v13_t* const header = reinterpret_cast<MilesBankHeader_v13_t*>(m_fileBuf.get());
+
+		this->Construct(header);
+		this->DiscoverStreamingFiles();
+
+		break;
+	}
 	case 28:
 	case 32:
 
@@ -112,7 +100,7 @@ const bool CMilesAudioBank::ParseFromHeader()
 	case 38:
 	{
 		this->languageCount = 9;
-		this->m_languageNames = {
+		this->languageNames = {
 			"english", "french", "german", "spanish", "italian",
 			"japanese", "polish", "russian", "mandarin"
 		};
@@ -154,7 +142,7 @@ const bool CMilesAudioBank::ParseFromHeader()
 	case 46:
 	{
 		this->languageCount = 10;
-		this->m_languageNames = {
+		this->languageNames = {
 			"english", "french", "german", "spanish", "italian",
 			"japanese", "polish", "russian", "mandarin", "korean"
 		};
@@ -191,7 +179,7 @@ const bool CMilesAudioBank::ParseFromHeader()
 	case 48: // Apex Season 27.1.x 2025_12_05_16_29, released 06/01/2026
 	{
 		this->languageCount = 10;
-		this->m_languageNames = {
+		this->languageNames = {
 			"english", "french", "german", "spanish", "italian",
 			"japanese", "polish", "russian", "mandarin", "korean"
 		};
@@ -257,16 +245,16 @@ const bool CMilesAudioBank::ParseFile(const std::string& path)
 	if (m_version < 0)
 		return false;
 
-
 	if (!this->ParseFromHeader())
 	{
 		Log("MBNK: Tried to parse unimplemented file version %i.\n", hdrShort->version);
 		return false;
 	}
-
-	Log("MBNK: Loaded bank \"%s\" with %u sources and %u events.\n", this->stringTable, this->sourceCount, this->eventCount);
-
-	return true;
+	else
+	{
+		Log("MBNK: Loaded bank \"%s\" with %u sources and %u events.\n", this->stringTable, this->sourceCount, this->eventCount);
+		return true;
+	}
 }
 
 extern ExportSettings_t g_ExportSettings;
@@ -307,7 +295,7 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 	CMilesAudioBank* audioBank = asset->GetContainerFile<CMilesAudioBank>();
 
 	// Create exported path + asset path.
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();// std::filesystem::current_path().append(EXPORT_DIRECTORY_NAME);
+	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
 	const std::filesystem::path asrcPath(audioAsset->GetAssetName());
 
 	// truncate paths?
@@ -332,7 +320,7 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 	std::filesystem::path streamPath(audioBank->GetFilePath());
 	streamPath.replace_filename(audioAsset->GetContainerFileName());
 
-	// Data Reading
+	// Open the MSTR file that contains this audio source
 	StreamIO streamFile(streamPath, eStreamIOMode::Read);
 
 	MilesStreamHeader_t streamFileHeader = streamFile.read<MilesStreamHeader_t>();
@@ -340,20 +328,19 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 	streamFile.seek(source->streamHeaderOffset);
 
 	char* sourceStreamHeaderData = new char[source->streamHeaderSize];
-
 	streamFile.read(sourceStreamHeaderData, source->streamHeaderSize);
-
-	std::vector<char> decodedAudioData;
 
 	MilesASIDecoder_t* decoder = nullptr;
 
-	switch (*(uint32_t*)sourceStreamHeaderData)
+	// So far these are thoe only types that have been used in Titanfall 2 and Apex Legends.
+	// Rad Audio is only used from Apex Legends Season 24 onwards, before then all audio sources were Bink Audio
+	switch (*reinterpret_cast<uint32_t*>(sourceStreamHeaderData))
 	{
 	case 'RADA': // Rad Audio
 		decoder = GetRadAudioDecoder();
 		break;
 	case 'BCF1': // Bink Audio
-		decoder = nullptr;
+		decoder = GetBinkAudioDecoder();
 		break;
 	default:
 	{
@@ -368,7 +355,9 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 		return false;
 	}
 
-	struct {
+	const bool isBinkA = decoder->decoderType == MILES_DECODER_BINKA;
+
+	struct MilesDecoderInfo {
 		uint32_t minSizeToOpenStream;
 		uint32_t maxBlockSize;
 		uint32_t maxSamplesPerDecode;
@@ -380,6 +369,7 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 	const auto ASI_notify_seek = static_cast<ASI_notify_seek_f>(decoder->ASI_notify_seek);
 	const auto ASI_decode_block = static_cast<ASI_decode_block_f>(decoder->ASI_decode_block);
 	const auto ASI_get_block_size = static_cast<ASI_get_block_size_f>(decoder->ASI_get_block_size);
+	const auto ASI_dealloc = static_cast<ASI_dealloc_f>(decoder->ASI_unk_dealloc_maybe);
 
 	uint16_t channels;
 	uint32_t sampleRate;
@@ -402,27 +392,24 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 
 	ASI_notify_seek(container.data());
 
-	userData.audioStreamSize = *(uint64_t*)(container.data() + 0x18) - source->streamHeaderSize;
+	userData.audioStreamSize = *(uint32_t*)(container.data() + 0x18) - source->streamHeaderSize;
 
+	const uint8_t sampleValueSize = (parsedMetadata.decodeFormat & 2) == 0 ? sizeof(uint16_t) : sizeof(float);
 
-	std::vector<float> interleavedBuffer = std::vector<float>(channels * samplesCount);
-	float* outputBuffer = interleavedBuffer.data();
-
-	std::vector<char> stream_data;
+	const size_t interleavedBufferDataSize = static_cast<size_t>(sampleValueSize) * channels * samplesCount;
+	std::vector<char> interleavedBuffer(interleavedBufferDataSize);
 
 	// Buffer for holding the decoded data for each decode_block call.
-	// parsedSizeInfo[2] is the max number of samples per decode
-	std::vector<float> radDecodedData(channels* parsedMetadata.maxSamplesPerDecode);
+	std::vector<char> radDecodedData(sampleValueSize * channels * parsedMetadata.maxSamplesPerDecode);
 
 	size_t totalFramesDecoded = 0;
 	uint32_t minInputBufferSize = 0; // start off with 0 bytes for input buffer so we can ask the decoder what it wants
 
+	std::vector<char> stream_data;
 	while (totalFramesDecoded < samplesCount)
 	{
 		// Clear the decode buffer just in case something goes wrong
-		memset(radDecodedData.data(), 0, radDecodedData.size() * 4);
-
-		//const auto decode_block = static_cast<decoder_new_f_t>(decoder->ASI_decode_block);
+		memset(radDecodedData.data(), 0, radDecodedData.size());
 
 		uint32_t bytesConsumed = 0;
 		uint32_t blockSize = 0;
@@ -430,22 +417,35 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 		// If we have not yet established the smallest that our input buffer can be, call getblocksize once to find out
 		if (minInputBufferSize == 0)
 		{
-			ASI_get_block_size(container.data(), stream_data.data(), 0, &bytesConsumed, &blockSize, &minInputBufferSize);
+			if (isBinkA)
+			{
+				stream_data.resize(8);
+				ReadAudioStream(stream_data.data(), 8, &userData);
+			}
 
-			// Fetch the smallest possible amount of data to populate the input buffer.
-			// Future decode iterations will include this minimum buffer size in their read operation
-			stream_data.resize(minInputBufferSize);
-			ReadAudioStream(stream_data.data(), stream_data.size(), &userData);
+			ASI_get_block_size(container.data(), stream_data.data(), stream_data.size(), &bytesConsumed, &blockSize, &minInputBufferSize);
+
+			if (!isBinkA)
+			{
+				// Fetch the smallest possible amount of data to populate the input buffer.
+				// Future decode iterations will include this minimum buffer size in their read operation
+				stream_data.resize(minInputBufferSize);
+				ReadAudioStream(stream_data.data(), stream_data.size(), &userData);
+			}
 		}
 
-		// Make a call to the decoder to find out how much data it wants for the next decode
-		ASI_get_block_size(container.data(), stream_data.data(), stream_data.size(), &bytesConsumed, &blockSize, &minInputBufferSize);
+		if (!isBinkA)
+		{
+			// Make a call to the decoder to find out how much data it wants for the next decode
+			ASI_get_block_size(container.data(), stream_data.data(), stream_data.size(), &bytesConsumed, &blockSize, &minInputBufferSize);
 
-		if (blockSize == 0xFFFF)
-			break;
+			if (blockSize == 0xFFFF)
+				break;
+		}
 
 		const size_t oldSize = stream_data.size();
-		stream_data.resize(blockSize + minInputBufferSize);
+		const size_t newSize = isBinkA ? blockSize : blockSize + minInputBufferSize;
+		stream_data.resize(newSize);
 		ReadAudioStream(stream_data.data() + oldSize, stream_data.size() - oldSize, &userData);
 
 		ASI_get_block_size(container.data(), stream_data.data(), stream_data.size(), &bytesConsumed, &blockSize, &minInputBufferSize);
@@ -456,13 +456,10 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 			uint32_t decodeBytesConsumed = 0;
 			uint32_t samplesDecoded = 0;
 
-			ASI_decode_block(container.data(), stream_data.data(), stream_data.size(), radDecodedData.data(), radDecodedData.size() * sizeof(float), &decodeBytesConsumed, &samplesDecoded);
+			ASI_decode_block(container.data(), stream_data.data(), stream_data.size(), radDecodedData.data(), radDecodedData.size(), &decodeBytesConsumed, &samplesDecoded);
 
 			if (decodeBytesConsumed == 0)
-			{
-				printf("Finished decoding.\n");
-				//break;
-			}
+				printf("Consumed 0 bytes for decode\n");
 
 			// The decoder provides us with a non-interleaved buffer which means that
 			// each channel's data is separate out into separate locations within the decode buffer
@@ -472,18 +469,21 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 			// interleaved:     LRLRLRLRLRLR
 			// https://stackoverflow.com/a/17883834
 			// 
-			// This may not be valid for other decoders, as miles uses parsedSizeInfo[3] to identify the decoded data format
+			// This may not be valid for other decoders, as miles uses parsedMetadata.decodeFormat to identify the decoded data format
 			// and decide how to process the audio immediately after decoding
 			for (int channelIdx = 0; channelIdx < channels; ++channelIdx)
 			{
-				const float* const channelSampleBuffer = radDecodedData.data() + (parsedMetadata.maxSamplesPerDecode * channelIdx);
+				const char* const channelSampleBuffer = radDecodedData.data() + (sampleValueSize * channelIdx * parsedMetadata.maxSamplesPerDecode);
 
 				for (uint32_t sampleIdx = 0; sampleIdx < samplesDecoded; ++sampleIdx)
 				{
 					// Index in the output buffer from which the channels of this sample begin
 					const size_t outputIdx = static_cast<size_t>(channels) * (sampleIdx + totalFramesDecoded);
 
-					outputBuffer[outputIdx + channelIdx] = channelSampleBuffer[sampleIdx];
+					if (parsedMetadata.decodeFormat & 2)
+						reinterpret_cast<float*>(interleavedBuffer.data())[outputIdx + channelIdx] = reinterpret_cast<const float*>(channelSampleBuffer)[sampleIdx];
+					else
+						reinterpret_cast<uint16_t*>(interleavedBuffer.data())[outputIdx + channelIdx] = reinterpret_cast<const uint16_t*>(channelSampleBuffer)[sampleIdx];
 				}
 			}
 
@@ -507,26 +507,30 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 			// Release the temporary buffer
 			delete[] tempBuffer;
 			tempBuffer = nullptr;
+
+			// i hate this function so so very much
+			if (isBinkA)
+				minInputBufferSize = 0;
 		}
 		else
-		{
-			//printf("Received blockSize = 0xFFFF after %lld decoded samples\n", totalFramesDecoded);
 			break;
-		}
 
 	}
+
+	if(ASI_dealloc)
+		ASI_dealloc(container.data());
 
 	StreamIO outFile(exportPath, eStreamIOMode::Write);
 
 	WAVEHEADER hdr;
 
-
 	outFile.write(hdr);
-	outFile.write(reinterpret_cast<char*>(interleavedBuffer.data()), interleavedBuffer.size() * sizeof(float));
+	outFile.write(interleavedBuffer.data(), interleavedBufferDataSize);
 
-	const uint64_t DataSize = interleavedBuffer.size() * sizeof(float);
+	const uint64_t DataSize = interleavedBufferDataSize;
 	hdr.size = static_cast<long>(DataSize + 36);
 
+	hdr.fmt.formatTag = parsedMetadata.decodeFormat & 2 ? 3 : 1;
 	hdr.fmt.channels = channels;
 	hdr.fmt.sampleRate = sampleRate;
 	hdr.fmt.blockAlign = static_cast<uint16_t>(DataSize / samplesCount);
@@ -539,6 +543,8 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 	outFile.seek(0);
 	outFile.write(hdr);
 	outFile.close();
+
+	delete[] sourceStreamHeaderData;
 
 	return true;
 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#define RSX_CACHE_DB_FILENAME "rsx_cache_db.bin"
+
 // v1: intial revision
 // v2: adds crc to header
 constexpr int CACHE_DB_FILE_VERSION = 2;
@@ -10,7 +12,7 @@ struct CacheDBHeader_t
 {
 	uint32_t fileVersion; // doesnt need to be 32-bit but it'll get padded to it anyway
 	uint32_t fileCRC;
-	uint32_t numMappings; // mappings immediately follow the header
+	uint32_t numMappings;
 
 	uint32_t reserved_0;
 
