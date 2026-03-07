@@ -359,5 +359,6 @@ rsx_cache_db.bin
 
 # Misc
 *.json
+!vcpkg*.json
 
 vcpkg_installed/*

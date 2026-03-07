@@ -21,7 +21,7 @@ enum eLogMessageColumnID
 	_LMC_COUNT,
 };
 
-void LogWindow_Draw(CUIState* uiState)
+void LogWnd_Draw(CUIState* uiState)
 {
     ImGui::SetNextWindowSize(ImVec2(0.f, 0.f), ImGuiCond_Always);
     if (ImGui::Begin("Logs", &uiState->logWindowVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize))

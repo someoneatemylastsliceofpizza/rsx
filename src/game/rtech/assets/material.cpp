@@ -393,21 +393,21 @@ void MatPreview_DXState(const MaterialDXState_t& dxState, const uint8_t dxStateI
         {
             if(ImGui::TreeNodeEx(std::format("{}##dxs_{}", i, dxStateId).c_str(), ImGuiTreeNodeFlags_SpanAvailWidth))
             {
-                ImGuiConstIntInputLeft("Raw Value", *reinterpret_cast<const int*>(&dxState.blendStates[i]), 170, ImGuiInputTextFlags_CharsHexadecimal);
+                ImGuiExt::ConstIntInputLeft("Raw Value", *reinterpret_cast<const int*>(&dxState.blendStates[i]), 170, ImGuiInputTextFlags_CharsHexadecimal);
                 ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 10.f);
 
-                ImGuiConstTextInputLeft("blendEnable", dxState.blendStates[i].blendEnable == 1 ? "true" : "false");
-                ImGuiConstTextInputLeft("srcBlend", D3D11_BLEND_NAMES[dxState.blendStates[i].srcBlend + 1]);
-                ImGuiConstTextInputLeft("destBlend", D3D11_BLEND_NAMES[dxState.blendStates[i].destBlend + 1]);
+                ImGuiExt::ConstTextInputLeft("blendEnable", dxState.blendStates[i].blendEnable == 1 ? "true" : "false");
+                ImGuiExt::ConstTextInputLeft("srcBlend", D3D11_BLEND_NAMES[dxState.blendStates[i].srcBlend + 1]);
+                ImGuiExt::ConstTextInputLeft("destBlend", D3D11_BLEND_NAMES[dxState.blendStates[i].destBlend + 1]);
 
-                ImGuiConstTextInputLeft("blendOp", D3D11_BLEND_OP_NAMES[dxState.blendStates[i].blendOp + 1]);
+                ImGuiExt::ConstTextInputLeft("blendOp", D3D11_BLEND_OP_NAMES[dxState.blendStates[i].blendOp + 1]);
 
-                ImGuiConstTextInputLeft("srcBlendAlpha", D3D11_BLEND_NAMES[dxState.blendStates[i].srcBlendAlpha + 1]);
-                ImGuiConstTextInputLeft("destBlendAlpha", D3D11_BLEND_NAMES[dxState.blendStates[i].destBlendAlpha + 1]);
+                ImGuiExt::ConstTextInputLeft("srcBlendAlpha", D3D11_BLEND_NAMES[dxState.blendStates[i].srcBlendAlpha + 1]);
+                ImGuiExt::ConstTextInputLeft("destBlendAlpha", D3D11_BLEND_NAMES[dxState.blendStates[i].destBlendAlpha + 1]);
 
-                ImGuiConstTextInputLeft("blendOpAlpha", D3D11_BLEND_OP_NAMES[dxState.blendStates[i].blendOpAlpha + 1]);
+                ImGuiExt::ConstTextInputLeft("blendOpAlpha", D3D11_BLEND_OP_NAMES[dxState.blendStates[i].blendOpAlpha + 1]);
 
-                ImGuiConstIntInputLeft("renderTargetWriteMask", dxState.blendStates[i].renderTargetWriteMask & 0xF, 170, ImGuiInputTextFlags_CharsHexadecimal);
+                ImGuiExt::ConstIntInputLeft("renderTargetWriteMask", dxState.blendStates[i].renderTargetWriteMask & 0xF, 170, ImGuiInputTextFlags_CharsHexadecimal);
 
                 ImGui::TreePop();
             }

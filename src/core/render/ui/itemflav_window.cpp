@@ -159,7 +159,7 @@ void ItemflavWindow_RefreshData(CUIState* uiState)
     }
 }
 
-void ItemflavWindow_Draw(CUIState* uiState)
+void ItemflavWnd_Draw(CUIState* uiState)
 {
     ImGui::SetNextWindowSize(ImVec2(0.f, 0.f), ImGuiCond_Always);
     if (ImGui::Begin("Itemflavors", &uiState->itemflavWindowVisible, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoResize))

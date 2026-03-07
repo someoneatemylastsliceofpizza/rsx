@@ -109,7 +109,8 @@ void ColouredTextForAssetType(const CAsset* const asset)
         ImGui::PopStyleColor();
 }
 
-void CreatePakAssetDependenciesTable(CAsset* asset)
+// [ Preview ] Render the asset dependencies table in the preview window for the provided asset
+void PreviewWnd_AssetDepsTbl(CAsset* asset)
 {
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 
@@ -232,40 +233,12 @@ void CreatePakAssetDependenciesTable(CAsset* asset)
     }
 }
 
-void ApplySelectionRequests(ImGuiMultiSelectIO* ms_io, std::deque<CAsset*>& selectedAssets, std::vector<CGlobalAssetData::AssetLookup_t>& pakAssets)
-{
-    for (ImGuiSelectionRequest& req : ms_io->Requests)
-    {
-        if (req.Type == ImGuiSelectionRequestType_SetAll) {
-            selectedAssets.clear();
-            if (req.Selected) {
-                for (int n = 0; n < pakAssets.size(); n++)
-                {
-                    selectedAssets.insert(selectedAssets.end(), pakAssets[n].m_asset);
-                }
-            }
-        }
-            
-        if (req.Type == ImGuiSelectionRequestType_SetRange)
-            {
-                for (int n = (int)req.RangeFirstItem; n <= (int)req.RangeLastItem; n++)
-                {
-                    auto iter = std::find(selectedAssets.begin(), selectedAssets.end(), pakAssets[n].m_asset);
-                    const bool isSelected = iter != selectedAssets.end();
-
-                    if (!isSelected && req.Selected) selectedAssets.insert(selectedAssets.end(), pakAssets[n].m_asset);
-                    if (isSelected && !req.Selected) selectedAssets.erase(iter);
-                }
-            }
-    }
-}
-
-void DrawSettingsWindow(CUIState* uiState)
+void SettingsWnd_Draw(CUIState* uiState)
 {
     constexpr uint32_t minThreads = 1u;
 
     ImGui::SetNextWindowSize(ImVec2(0.f, 0.f), ImGuiCond_Always);
-    if (ImGui::Begin("Settings", &uiState->settingsWindowVisible, ImGuiWindowFlags_NoResize))
+    if (ImGui::Begin("Settings", &uiState->settingsWindowVisible, ImGuiWindowFlags_None))
     {
         ImGui::SeparatorText("General");
 
@@ -384,58 +357,55 @@ void DrawSettingsWindow(CUIState* uiState)
         ImGui::End();
     }
 }
-extern void ItemflavWindow_Draw(CUIState*);
-extern void LogWindow_Draw(CUIState*);
+extern void ItemflavWnd_Draw(CUIState*);
+extern void LogWnd_Draw(CUIState*);
 
-void HandleRenderFrame()
+static std::deque<CAsset*> s_selectedAssets;
+static std::vector<CGlobalAssetData::AssetLookup_t> s_filteredAssets;
+static CAsset* s_prevRenderInfoAsset = nullptr;
+
+void ApplySelectionRequests(ImGuiMultiSelectIO* ms_io, std::deque<CAsset*>& selectedAssets, std::vector<CGlobalAssetData::AssetLookup_t>& pakAssets)
 {
-    ImGui_ImplDX11_NewFrame();
-    ImGui_ImplWin32_NewFrame();
-    ImGui::NewFrame();
-
-    // create a docking area across the entire viewport
-    if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
+    for (ImGuiSelectionRequest& req : ms_io->Requests)
     {
-        ImGui::SetNextWindowBgAlpha(0.f);
-        ImGui::DockSpaceOverViewport(0, NULL, ImGuiDockNodeFlags_PassthruCentralNode, 0);
+        if (req.Type == ImGuiSelectionRequestType_SetAll) {
+            selectedAssets.clear();
+            if (req.Selected) {
+                for (int n = 0; n < pakAssets.size(); n++)
+                {
+                    selectedAssets.insert(selectedAssets.end(), pakAssets[n].m_asset);
+                }
+            }
+        }
+
+        if (req.Type == ImGuiSelectionRequestType_SetRange)
+        {
+            for (int n = (int)req.RangeFirstItem; n <= (int)req.RangeLastItem; n++)
+            {
+                auto iter = std::find(selectedAssets.begin(), selectedAssets.end(), pakAssets[n].m_asset);
+                const bool isSelected = iter != selectedAssets.end();
+
+                if (!isSelected && req.Selected) selectedAssets.insert(selectedAssets.end(), pakAssets[n].m_asset);
+                if (isSelected && !req.Selected) selectedAssets.erase(iter);
+            }
+        }
     }
+}
 
-    // while ImGui is using keyboard input, we should not accept any keyboard input, but we should also clear all  
-    // existing key states, as otherwise we can end up moving forever (until ImGui loses focus) in model preview if
-    // the movement keys are held when ImGui starts capturing keyboard
-    if (ImGui::GetIO().WantCaptureKeyboard)
-    {
-        g_pInput->ClearKeyStates();
-    }
-
-    if (g_pInput->mouseCaptured)
-        g_pInput->Frame(ImGui::GetIO().DeltaTime);
-
-    g_dxHandler->GetCamera()->Move(ImGui::GetIO().DeltaTime);
-
-    CUIState& uiState = g_dxHandler->GetUIState();
-
-#if defined(DEBUG_IMGUI_DEMO)
-    ImGui::ShowDemoWindow();
-#endif
-
-    static std::deque<CAsset*> selectedAssets;
-    static std::vector<CGlobalAssetData::AssetLookup_t> filteredAssets;
-    static CAsset* prevRenderInfoAsset = nullptr;
-
-    CDXDrawData* previewDrawData = nullptr;
+void MainWnd_MenuBar()
+{
     if (ImGui::BeginMainMenuBar())
     {
+        CUIState& uiState = g_dxHandler->GetUIState();
         if (ImGui::BeginMenu("File"))
         {
             if (ImGui::MenuItem("Open"))
             {
                 if (!inJobAction)
                 {
-                    // Reset selected asset to avoid crash.
-                    selectedAssets.clear();
-                    filteredAssets.clear();
-                    prevRenderInfoAsset = nullptr;
+                    s_selectedAssets.clear();
+                    s_filteredAssets.clear();
+                    s_prevRenderInfoAsset = nullptr;
                     g_assetData.ClearAssetData();
                     uiState.ClearAssetData();
 
@@ -448,15 +418,14 @@ void HandleRenderFrame()
             {
                 if (!inJobAction)
                 {
-                    if(g_assetData.v_assets.size() > 0)
+                    if (g_assetData.v_assets.size() > 0)
                         g_assetData.Log_Info(nullptr, "Unloaded %lld asset%s from %lld container file%s", g_assetData.v_assets.size(), g_assetData.v_assets.size() == 1 ? "" : "s", g_assetData.v_assetContainers.size(), g_assetData.v_assetContainers.size() == 1 ? "" : "s");
 
-                    selectedAssets.clear();
-                    filteredAssets.clear();
-                    prevRenderInfoAsset = nullptr;
+                    s_selectedAssets.clear();
+                    s_filteredAssets.clear();
+                    s_prevRenderInfoAsset = nullptr;
                     g_assetData.ClearAssetData();
                     uiState.ClearAssetData();
-
                 }
             }
 
@@ -473,10 +442,8 @@ void HandleRenderFrame()
                 uiState.ShowItemflavWindow(true);
 #endif
 
-#if defined(HAS_LOG_WINDOW)
             if (ImGui::MenuItem("Logs"))
                 uiState.ShowLogWindow(true);
-#endif
 
             ImGui::EndMenu();
         }
@@ -489,9 +456,10 @@ void HandleRenderFrame()
 #endif
         ImGui::EndMainMenuBar();
     }
+}
 
-    // [rexx]: yes, these branches could be structured a bit better
-    //         but otherwise we get very deep indentation which looks ugly
+void MainWnd_WelcomeBox()
+{
     if (!inJobAction && g_assetData.v_assetContainers.empty())
     {
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
@@ -510,9 +478,9 @@ void HandleRenderFrame()
             if (ImGui::Button("Open File..."))
             {
                 // Reset selected asset to avoid crash.
-                selectedAssets.clear();
-                filteredAssets.clear();
-                prevRenderInfoAsset = nullptr;
+                s_selectedAssets.clear();
+                s_filteredAssets.clear();
+                s_prevRenderInfoAsset = nullptr;
                 g_assetData.ClearAssetData();
 
                 // We kinda leak the thread here but it's okay, we want it to keep executing.
@@ -522,6 +490,44 @@ void HandleRenderFrame()
             ImGui::End();
         }
     }
+}
+
+void HandleRenderFrame()
+{
+    ImGui_ImplDX11_NewFrame();
+    ImGui_ImplWin32_NewFrame();
+    ImGui::NewFrame();
+
+    // create a docking area across the entire viewport
+    if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
+    {
+        ImGui::SetNextWindowBgAlpha(0.f);
+        ImGui::DockSpaceOverViewport(0, NULL, ImGuiDockNodeFlags_PassthruCentralNode, 0);
+    }
+
+    // while ImGui is using keyboard input, we should not accept any keyboard input, but we should also clear all  
+    // existing key states, as otherwise we can end up moving forever (until ImGui loses focus) in model preview if
+    // the movement keys are held when ImGui starts capturing keyboard
+    if (ImGui::GetIO().WantCaptureKeyboard)
+        g_pInput->ClearKeyStates();
+
+    if (g_pInput->mouseCaptured)
+        g_pInput->Frame(ImGui::GetIO().DeltaTime);
+
+    g_dxHandler->GetCamera()->Move(ImGui::GetIO().DeltaTime);
+
+    CUIState& uiState = g_dxHandler->GetUIState();
+
+#if defined(DEBUG_IMGUI_DEMO)
+    ImGui::ShowDemoWindow();
+#endif
+
+    MainWnd_MenuBar();
+
+    MainWnd_WelcomeBox();
+
+    // [rexx]: i hate that this has to be declared here, but it's used in the next if statement, and then immediately after it as well
+    CDXDrawData* previewDrawData = nullptr;
 
     static size_t prevAssetCount = g_assetData.v_assets.size();
     // Only render window if we have a pak loaded and if we aren't currently in pakload.
@@ -530,31 +536,30 @@ void HandleRenderFrame()
         ImGui::SetNextWindowSize(ImVec2(800, 400), ImGuiCond_FirstUseEver);
         if (ImGui::Begin("Asset List", nullptr, ImGuiWindowFlags_MenuBar))
         {
-            std::vector<CGlobalAssetData::AssetLookup_t>& pakAssets = FilterConfig->textFilter.IsActive() ? filteredAssets : g_assetData.v_assets;
+            std::vector<CGlobalAssetData::AssetLookup_t>& pakAssets = FilterConfig->textFilter.IsActive() ? s_filteredAssets : g_assetData.v_assets;
 
             if (ImGui::BeginMenuBar())
             {
                 if (ImGui::BeginMenu("Export"))
                 {
-                    const bool multipleAssetsSelected = selectedAssets.size() > 1;
+                    const bool multipleAssetsSelected = s_selectedAssets.size() > 1;
 
                     if (ImGui::Selectable(multipleAssetsSelected ? "Export selected assets" : "Export selected asset"))
                     {
-                        if (!selectedAssets.empty())
+                        if (!s_selectedAssets.empty())
                         {
                             std::deque<CAsset*> cpyAssets;
-                            cpyAssets.insert(cpyAssets.end(), selectedAssets.begin(), selectedAssets.end());
+                            cpyAssets.insert(cpyAssets.end(), s_selectedAssets.begin(), s_selectedAssets.end());
                             CThread(HandlePakAssetExportList, std::move(cpyAssets), g_ExportSettings.exportAssetDeps).detach();
-                            selectedAssets.clear();
+                            s_selectedAssets.clear();
                         }
                     }
 
-                    // Option is only valid if one asset is selected
                     if (ImGui::Selectable("Export all for selected type", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
                     {
-                        if (selectedAssets.size() == 1)
+                        if (s_selectedAssets.size() == 1)
                         {
-                            const uint32_t desiredType = selectedAssets[0]->GetAssetType();
+                            const uint32_t desiredType = s_selectedAssets[0]->GetAssetType();
                             auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredType](const CGlobalAssetData::AssetLookup_t& a)
                                 {
                                     return a.m_asset->GetAssetType() == desiredType;
@@ -562,17 +567,15 @@ void HandleRenderFrame()
 
                             std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
                             CThread(HandleExportSelectedAssetType, std::move(allAssets), g_ExportSettings.exportAssetDeps).detach();
-                            selectedAssets.clear();
+                            s_selectedAssets.clear();
                         }
                     }
 
-                    // Option is only valid if one asset is selected
-                    // TODO: rename to "for selected file" to allow for all audio assets to be exported?
                     if (ImGui::Selectable("Export all for selected pak", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
                     {
-                        if (selectedAssets.size() == 1 && selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
+                        if (s_selectedAssets.size() == 1 && s_selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
                         {
-                            const CPakFile* desiredPak = selectedAssets[0]->GetContainerFile<const CPakFile>();
+                            const CPakFile* desiredPak = s_selectedAssets[0]->GetContainerFile<const CPakFile>();
                             auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredPak](const CGlobalAssetData::AssetLookup_t& a)
                                 {
                                     return a.m_asset->GetAssetContainerType() == CAsset::ContainerType::PAK && a.m_asset->GetContainerFile<const CPakFile>() == desiredPak;
@@ -580,18 +583,16 @@ void HandleRenderFrame()
 
                             std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
                             CThread(HandleExportSelectedAssetType, std::move(allAssets), g_ExportSettings.exportAssetDeps).detach();
-                            selectedAssets.clear();
+                            s_selectedAssets.clear();
                         }
                     }
 
-                    // Option is only valid if one asset is selected
-                    // TODO: rename to "for selected file" to allow for all audio assets to be exported?
                     if (ImGui::Selectable("Export all for selected pak and type", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
                     {
-                        if (selectedAssets.size() == 1 && selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
+                        if (s_selectedAssets.size() == 1 && s_selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
                         {
-                            const CPakFile* desiredPak = selectedAssets[0]->GetContainerFile<const CPakFile>();
-                            const uint32_t desiredType = selectedAssets[0]->GetAssetType();
+                            const CPakFile* desiredPak = s_selectedAssets[0]->GetContainerFile<const CPakFile>();
+                            const uint32_t desiredType = s_selectedAssets[0]->GetAssetType();
                             auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredPak, desiredType](const CGlobalAssetData::AssetLookup_t& a)
                                 {
                                     return a.m_asset->GetAssetContainerType() == CAsset::ContainerType::PAK
@@ -601,20 +602,16 @@ void HandleRenderFrame()
 
                             std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
                             CThread(HandleExportSelectedAssetType, std::move(allAssets), g_ExportSettings.exportAssetDeps).detach();
-                            selectedAssets.clear();
+                            s_selectedAssets.clear();
                         }
                     }
 
                     if (ImGui::Selectable("Export all"))
-                    {
                         CThread(HandleExportAllPakAssets, &pakAssets, g_ExportSettings.exportAssetDeps).detach();
-                    }
 
                     // Exports the names of all assets in the currently shown filtered asset list (i.e., search results)
-                    if (ImGui::Selectable("Export list of assets..."))
-                    {
+                    if (ImGui::Selectable("Export list of asset names..."))
                         CThread(HandleListExportPakAssets, g_dxHandler->GetWindowHandle(), &pakAssets).detach();
-                    }
 
                     ImGui::EndMenu();
                 }
@@ -622,15 +619,15 @@ void HandleRenderFrame()
             }
 
             // OR case if we load a pak and the filter is not cleared yet.
-            if (FilterConfig->textFilter.Draw("##Filter", -1.f) || (filteredAssets.empty() && FilterConfig->textFilter.IsActive()) || prevAssetCount != g_assetData.v_assets.size())
+            if (FilterConfig->textFilter.Draw("##Filter", -1.f) || (s_filteredAssets.empty() && FilterConfig->textFilter.IsActive()) || prevAssetCount != g_assetData.v_assets.size())
             {
-                filteredAssets.clear();
+                s_filteredAssets.clear();
                 for (auto& it : g_assetData.v_assets)
                 {
                     const std::string& assetName = it.m_asset->GetAssetName();
 
                     if (FilterConfig->textFilter.PassFilter(assetName.c_str()))
-                        filteredAssets.push_back(it);
+                        s_filteredAssets.push_back(it);
                     else
                     {
                         const char* const inputText = FilterConfig->textFilter.inputBuf.c_str();
@@ -642,13 +639,13 @@ void HandleRenderFrame()
                         if (end == &inputText[inputLen])
                         {
                             if (guid == RTech::StringToGuid(assetName.c_str()))
-                                filteredAssets.push_back(it);
+                                s_filteredAssets.push_back(it);
                         }
                     }
                 }
 
                 // Shrink capacity to match new size.
-                filteredAssets.shrink_to_fit();
+                s_filteredAssets.shrink_to_fit();
             }
 
             constexpr int numColumns = AssetColumn_t::_AC_COUNT;
@@ -671,9 +668,9 @@ void HandleRenderFrame()
                 }
 
                 ImGuiMultiSelectFlags flags = ImGuiMultiSelectFlags_ClearOnEscape | ImGuiMultiSelectFlags_BoxSelect1d;
-                ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags, static_cast<int>(selectedAssets.size()), static_cast<int>(pakAssets.size()));
+                ImGuiMultiSelectIO* ms_io = ImGui::BeginMultiSelect(flags, static_cast<int>(s_selectedAssets.size()), static_cast<int>(pakAssets.size()));
 
-                ApplySelectionRequests(ms_io, selectedAssets, pakAssets);
+                ApplySelectionRequests(ms_io, s_selectedAssets, pakAssets);
 
                 // arbitrary large number that will never happen
                 static unsigned int lastSelectionSize = UINT32_MAX;
@@ -702,22 +699,21 @@ void HandleRenderFrame()
 
                         if (ImGui::TableSetColumnIndex(AssetColumn_t::AC_Name))
                         {
-                            const bool isSelected = std::find(selectedAssets.begin(), selectedAssets.end(), asset) != selectedAssets.end();
+                            const bool isSelected = std::find(s_selectedAssets.begin(), s_selectedAssets.end(), asset) != s_selectedAssets.end();
                             ImGui::SetNextItemSelectionUserData(rowNum);
                             if (ImGui::Selectable(asset->GetAssetName().c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick))
                             {
-
                                 if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                                 {
                                     // if the double clicked asset is not in the list, add it
                                     // this is a very strange case but the only way you can export multiple assets by double clicking is by
                                     // holding shift or ctrl while double clicking, which may cause the hovered asset to be deselected before export
                                     if (!isSelected)
-                                        selectedAssets.insert(selectedAssets.end(), asset);
+                                        s_selectedAssets.insert(s_selectedAssets.end(), asset);
 
-                                    CThread(HandlePakAssetExportList, std::move(selectedAssets), g_ExportSettings.exportAssetDeps).detach();
+                                    CThread(HandlePakAssetExportList, std::move(s_selectedAssets), g_ExportSettings.exportAssetDeps).detach();
                                 
-                                    selectedAssets.clear();
+                                    s_selectedAssets.clear();
                                 }
                             }
                         }
@@ -733,7 +729,7 @@ void HandleRenderFrame()
                 }
                 ms_io = ImGui::EndMultiSelect();
 
-                ApplySelectionRequests(ms_io, selectedAssets, pakAssets);
+                ApplySelectionRequests(ms_io, s_selectedAssets, pakAssets);
 
                 ImGui::EndTable();
             }
@@ -743,7 +739,7 @@ void HandleRenderFrame()
         ImGui::SetNextWindowSize(ImVec2(800, 400), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_FirstUseEver, ImVec2(0.5f, 0.5f));
 
-        CAsset* const firstAsset = selectedAssets.empty() ? nullptr : *selectedAssets.begin();
+        CAsset* const firstAsset = s_selectedAssets.empty() ? nullptr : *s_selectedAssets.begin();
         
         if (ImGui::Begin("Asset Info", nullptr, ImGuiWindowFlags_MenuBar))
         {
@@ -753,13 +749,11 @@ void HandleRenderFrame()
                 {
                     if (ImGui::BeginMenu("Export"))
                     {
+                        // File > Export > Quick Export
+                        // Option to "quickly" export the asset to the exported_files directory
+                        // in the format defined by the "Export Options" menu.
                         if (ImGui::MenuItem("Quick Export"))
-                        {
-                            // Option to "quickly" export the asset to the exported_files directory
-                            // in the format defined by the "Export Options" menu.
-
                             CThread(HandleExportBindingForAsset, std::move(firstAsset), g_ExportSettings.exportAssetDeps).detach();
-                        }
 
                         ImGui::EndMenu();
                     }
@@ -768,12 +762,13 @@ void HandleRenderFrame()
                 ImGui::EndMenuBar();
             }
 
-            const std::string assetName = !firstAsset ? "(none)" : firstAsset->GetAssetName(); // std::format("{} ({:X})", , firstAsset->data()->guid);
+            const std::string assetName = !firstAsset ? "(none)" : firstAsset->GetAssetName();
             const std::string assetGuidStr = !firstAsset ? "(none)" : std::format("{:X}", firstAsset->GetAssetGUID());
 
-            ImGuiConstTextInputLeft("Asset Name", assetName.c_str(), 70);
-            ImGuiConstTextInputLeft("Asset GUID", assetGuidStr.c_str(), 70);
+            ImGuiExt::ConstTextInputLeft("Asset Name", assetName.c_str(), 70);
+            ImGuiExt::ConstTextInputLeft("Asset GUID", assetGuidStr.c_str(), 70);
 
+            // Dependency information only exists for PAK assets
             if (firstAsset && firstAsset->GetAssetContainerType() == CAsset::ContainerType::PAK)
             {
                 const PakAsset_t* const pakAsset = static_cast<CPakAsset*>(firstAsset)->data();
@@ -784,7 +779,7 @@ void HandleRenderFrame()
                 ImGui::Text("Number of Dependent Assets: %hu", pakAsset->dependentsCount);
                 ImGuiExt::HelpMarker("This is the number of assets in the same .rpak file as this asset that use this asset");
 
-                CreatePakAssetDependenciesTable(firstAsset);
+                PreviewWnd_AssetDepsTbl(firstAsset);
             }
 
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f);
@@ -801,10 +796,10 @@ void HandleRenderFrame()
                     if (it->second.previewFunc)
                     {
                         // First frame is a special case, we wanna reset some settings for the preview function.
-                        const bool firstFrameForAsset = firstAsset != prevRenderInfoAsset;
+                        const bool firstFrameForAsset = firstAsset != s_prevRenderInfoAsset;
 
                         previewDrawData = reinterpret_cast<CDXDrawData*>(it->second.previewFunc(static_cast<CPakAsset*>(firstAsset), firstFrameForAsset));
-                        prevRenderInfoAsset = firstAsset;
+                        s_prevRenderInfoAsset = firstAsset;
 
                     }
                     else ImGui::Text("Asset type '%s' does not currently support Asset Preview.", fourCCToString(type).c_str());
@@ -818,17 +813,15 @@ void HandleRenderFrame()
     }
 
     if (uiState.settingsWindowVisible)
-        DrawSettingsWindow(&uiState);
+        SettingsWnd_Draw(&uiState);
 
 #if defined(HAS_ITEMFLAV_WINDOW)
     if (uiState.itemflavWindowVisible)
-        ItemflavWindow_Draw(&uiState);
+        ItemflavWnd_Draw(&uiState);
 #endif
 
-#if defined(HAS_LOG_WINDOW)
     if (uiState.logWindowVisible)
-        LogWindow_Draw(&uiState);
-#endif
+        LogWnd_Draw(&uiState);
 
     g_pImGuiHandler->HandleProgressBar();
 
@@ -973,7 +966,6 @@ void HandleRenderFrame()
 
                     if (meshDrawData.uberDynamicBuf)
                         ctx->PSSetConstantBuffers(1u, 1u, &meshDrawData.uberDynamicBuf);
-
 
                     // PixelShader: CBufCommonPerCamera, CBufModelInstance
                     ctx->PSSetConstantBuffers(2u, ARRSIZE(sharedConstBuffers), sharedConstBuffers);

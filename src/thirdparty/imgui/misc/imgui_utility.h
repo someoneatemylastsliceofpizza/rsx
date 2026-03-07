@@ -214,21 +214,23 @@ static std::string _labelPrefix(const char* const label, int inputRelPosX)
 
     return labelID;
 }
-inline void ImGuiConstTextInputLeft(const char* label, const char* text, int inputRelPosX = 170)
-{
-    const std::string lblText = _labelPrefix(label, inputRelPosX);
 
-    ImGui::InputText(lblText.c_str(), const_cast<char*>(text), strlen(text), ImGuiInputTextFlags_ReadOnly);
-}
-
-inline void ImGuiConstIntInputLeft(const char* label, const int val, int inputRelPosX = 170, ImGuiInputTextFlags flags = 0)
-{
-    const std::string lblText = _labelPrefix(label, inputRelPosX);
-
-    ImGui::InputInt(label, const_cast<int*>(&val), 0, 0, ImGuiInputTextFlags_ReadOnly | flags);
-}
-
+// ImGui extensions and helper functions
 namespace ImGuiExt {
     void HelpMarker(const char* const desc);
     void Tooltip(const char* const text);
+
+    inline void ConstTextInputLeft(const char* label, const char* text, int inputRelPosX = 170)
+    {
+        const std::string lblText = _labelPrefix(label, inputRelPosX);
+
+        ImGui::InputText(lblText.c_str(), const_cast<char*>(text), strlen(text), ImGuiInputTextFlags_ReadOnly);
+    }
+
+    inline void ConstIntInputLeft(const char* label, const int val, int inputRelPosX = 170, ImGuiInputTextFlags flags = 0)
+    {
+        const std::string lblText = _labelPrefix(label, inputRelPosX);
+
+        ImGui::InputInt(label, const_cast<int*>(&val), 0, 0, ImGuiInputTextFlags_ReadOnly | flags);
+    }
 };
