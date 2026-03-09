@@ -1,12 +1,12 @@
 #include "pch.h"
+
+#if !defined(NO_LIBCURL)
 #include "update.h"
 #include <core/utils/jsonutils.h>
 #include <core/version.h>
 
-#if !defined(NO_LIBCURL)
 #include <curl/curl.h>
 #include <core/utils/curlutils.h>
-#endif
 
 
 bool SendRequest(const std::string& finalUrl, const char* request,
@@ -148,3 +148,5 @@ bool GetLatestGitHubReleaseInformation(GitHubReleaseInfo_s* update)
 
 	return false;
 }
+
+#endif

@@ -2,7 +2,7 @@ name: CI
 on: [push, pull_request]
 
 env:
-  BUILD_PROFILE: Release
+  BUILD_PROFILE: Release_CI
 
 jobs:
   build:
@@ -10,8 +10,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Run vcpkg
-        run: vcpkg install
       - name: Setup MSBuild
         uses: microsoft/setup-msbuild@v1.1
       - name: Build
