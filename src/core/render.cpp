@@ -235,6 +235,126 @@ void PreviewWnd_AssetDepsTbl(CAsset* asset)
     }
 }
 
+void PreviewWnd_AssetParentsTbl(CAsset* asset)
+{
+    const uint64_t assetGuid = asset->GetAssetGUID();
+
+    // Collect all PAK assets that have this asset's GUID in their dependency list.
+    std::vector<CPakAsset*> parents;
+    for (auto& lookup : g_assetData.v_assets)
+    {
+        CAsset* candidate = lookup.m_asset;
+        if (candidate == asset)
+            continue;
+
+        if (candidate->GetAssetContainerType() != CAsset::ContainerType::PAK)
+            continue;
+
+        CPakAsset* pakCandidate = static_cast<CPakAsset*>(candidate);
+
+        std::vector<AssetGuid_t> deps;
+        pakCandidate->getDependencies(deps);
+
+        for (const AssetGuid_t& dep : deps)
+        {
+            if (dep.guid == assetGuid)
+            {
+                parents.push_back(pakCandidate);
+                break;
+            }
+        }
+    }
+
+    constexpr ImGuiTableFlags tableFlags =
+        ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable
+        | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_NoBordersInBody
+        | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
+
+    const ImVec2 outerSize = ImVec2(0.f, ImGui::GetTextLineHeightWithSpacing() * 12.f);
+
+    constexpr int numColumns = 5;
+
+    if (ImGui::TreeNodeEx("Parent Assets", ImGuiTreeNodeFlags_SpanAvailWidth))
+    {
+        if (parents.empty())
+        {
+            ImGui::TextUnformatted("No loaded assets reference this asset.");
+        }
+        else if (ImGui::BeginTable("ParentAssets", numColumns, tableFlags, outerSize))
+        {
+            ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.f, 0);
+            ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.f, 1);
+            ImGui::TableSetupColumn("Pak", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.f, 2);
+            ImGui::TableSetupColumn("Status", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.f, 3);
+            ImGui::TableSetupColumn("", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.f, 4);
+            ImGui::TableSetupScrollFreeze(1, 1);
+
+            ImGui::TableHeadersRow();
+
+            for (int p = 0; p < static_cast<int>(parents.size()); ++p)
+            {
+                CPakAsset* parentAsset = parents[p];
+
+                ImGui::PushID(p);
+
+                ImGui::TableNextRow(ImGuiTableRowFlags_None, 0.f);
+
+                // Asset Type
+                if (ImGui::TableSetColumnIndex(0))
+                {
+                    ImGui::AlignTextToFramePadding();
+                    ColouredTextForAssetType(parentAsset);
+                }
+
+                // Asset Name
+                if (ImGui::TableSetColumnIndex(1))
+                {
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextUnformatted(parentAsset->GetAssetName().c_str());
+                }
+
+                // Container (pak) file name
+                if (ImGui::TableSetColumnIndex(2))
+                {
+                    ImGui::AlignTextToFramePadding();
+                    ImGui::TextUnformatted(parentAsset->GetContainerFileName().c_str());
+                }
+
+                // Export Status
+                if (ImGui::TableSetColumnIndex(3))
+                {
+                    ImGui::AlignTextToFramePadding();
+                    if (parentAsset->GetExportedStatus())
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.f, 1.f, 1.f, 1.f));
+                        ImGui::TextUnformatted("Exported");
+                    }
+                    else
+                    {
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.f, 1.f, 0.f, 1.f));
+                        ImGui::TextUnformatted("Loaded");
+                    }
+                    ImGui::PopStyleColor();
+                }
+
+                // Export button
+                if (ImGui::TableSetColumnIndex(4))
+                {
+                    ImGui::AlignTextToFramePadding();
+                    if (ImGui::Button("Export"))
+                        CThread(HandleExportBindingForAsset, parentAsset, g_ExportSettings.exportAssetDeps).detach();
+                }
+
+                ImGui::PopID();
+            }
+
+            ImGui::EndTable();
+        }
+
+        ImGui::TreePop();
+    }
+}
+
 void SettingsWnd_Draw(CUIState* uiState)
 {
     constexpr uint32_t minThreads = 1u;
@@ -816,6 +936,7 @@ void HandleRenderFrame()
             ImGuiExt::HelpMarker("This is the number of assets in the same .rpak file as this asset that use this asset");
 
             PreviewWnd_AssetDepsTbl(firstAsset);
+            PreviewWnd_AssetParentsTbl(firstAsset);
         }
 
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f);
