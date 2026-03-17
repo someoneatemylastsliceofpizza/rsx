@@ -23,6 +23,7 @@ struct ExportSettings_t
     uint16_t qcMinorVersion;
 
     bool exportRigSequences;        // export sequences with a model or rig
+    bool exportSeqAnimData;
     bool exportModelSkin;           // export the selected skin for a model
     bool exportModelMatsTruncated;  // truncate material names in model files
     bool exportQCIFiles;            // qc will split into multiple include files

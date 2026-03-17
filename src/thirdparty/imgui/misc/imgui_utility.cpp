@@ -130,6 +130,7 @@ static void ExportSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandle
         ImGuiReadSetting("QCMinorVersion=%u",               settings->qcMinorVersion, i, uint16_t);
 
         ImGuiReadSetting("ExportRigSequences=%i",           settings->exportRigSequences, i, int);
+        ImGuiReadSetting("ExportSeqAnimData=%i",            settings->exportSeqAnimData, i, int);
         ImGuiReadSetting("ExportModelSkin=%i",              settings->exportModelSkin, i, int);
         ImGuiReadSetting("ExportTruncatedMaterials=%i",     settings->exportModelMatsTruncated, i, int);
         ImGuiReadSetting("ExportQCIFiles=%i",               settings->exportQCIFiles, i, int);
@@ -140,7 +141,7 @@ static void ExportSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandle
 {
     UNUSED(ctx);
 
-    buf->reserve(buf->size() + (48 * 11));
+    buf->reserve(buf->size() + (48 * 12));
     buf->appendf("[%s][general]\n", handler->TypeName);
     
     buf->appendf("ExportPathsFull=%i\n",            g_ExportSettings.exportPathsFull);
@@ -155,6 +156,7 @@ static void ExportSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandle
     buf->appendf("QCMinorVersion=%u\n",             g_ExportSettings.qcMinorVersion);
 
     buf->appendf("ExportRigSequences=%i\n",         g_ExportSettings.exportRigSequences);
+    buf->appendf("ExportSeqAnimData=%i\n",          g_ExportSettings.exportSeqAnimData);
     buf->appendf("ExportModelSkin=%i\n",            g_ExportSettings.exportModelSkin);
     buf->appendf("ExportTruncatedMaterials=%i\n",   g_ExportSettings.exportModelMatsTruncated);
     buf->appendf("ExportQCIFiles=%i\n",             g_ExportSettings.exportQCIFiles);

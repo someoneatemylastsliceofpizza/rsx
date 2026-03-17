@@ -287,6 +287,10 @@ void SettingsWnd_Draw(CUIState* uiState)
         ImGui::Checkbox("Export Sequences", &g_ExportSettings.exportRigSequences);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables exporting of all animation sequences that are associated with any rig or model asset that is being exported.");
+        
+        ImGui::Checkbox("Export Anim Data (.asqd)", &g_ExportSettings.exportSeqAnimData);
+        ImGui::SameLine();
+        ImGuiExt::HelpMarker("Enables automatic exporting of ASQD files along with RSEQ.");
 
         ImGui::Checkbox("Export Skin", &g_ExportSettings.exportModelSkin);
         ImGui::SameLine();

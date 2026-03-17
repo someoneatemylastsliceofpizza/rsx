@@ -13,6 +13,7 @@
 
 extern CBufferManager g_BufferManager;
 extern ExportSettings_t g_ExportSettings;
+extern bool ExportAnimSeqDataAsset(CAsset* const asset, const int setting);
 
 void LoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 {
@@ -215,6 +216,17 @@ static bool ExportRawAnimSeqAsset(CPakAsset* const asset, const AnimSeqAsset* co
 		out << "}\n";
 
 		depOut.close();
+	}
+
+	if (g_ExportSettings.exportSeqAnimData)
+	{
+		for (size_t i = 0; i < numDependencies; i++)
+		{
+			CPakAsset* const depAsset = g_assetData.FindAssetByGUID<CPakAsset>(dependencies[i].guid);
+			if (!depAsset || depAsset->GetAssetType() != 'dqsa')
+				continue;
+			ExportAnimSeqDataAsset(depAsset, 0);
+		}
 	}
 
 	return true;

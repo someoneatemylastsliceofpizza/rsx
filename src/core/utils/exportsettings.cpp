@@ -37,6 +37,7 @@ void ExportSettings_t::SetFromCLI(const CCommandLine* cli)
 		this->qcMinorVersion = static_cast<uint16_t>(atoi(qcMinorStr));
 
 	this->exportRigSequences = cli->HasParam("-exportrigsequences");
+	this->exportSeqAnimData = cli->HasParam("-exportseqanimdata");
 	this->exportModelSkin = false; // todo: maybe make an option to replace this for exporting all skins, since skins cant be picked on CLI
 	this->exportModelMatsTruncated = cli->HasParam("-truncatemodelmats");
 	this->exportQCIFiles = cli->HasParam("-useqci");

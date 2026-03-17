@@ -106,7 +106,7 @@ void ParseAnimSeqDataForSeq(ModelSeq_t* const seqdesc, const size_t boneCount)
 
 		if (animdesc->sectionframes)
 		{
-			for (int section = animdesc->SectionCount(true) - 1; section >= 0; section--)
+			for (int section = 0; section < animdesc->SectionCount(true); section++)
 			{
 				const ModelAnimSection_t* const pSection = animdesc->sections + section;
 
