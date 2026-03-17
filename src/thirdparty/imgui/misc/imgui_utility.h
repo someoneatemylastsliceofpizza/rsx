@@ -171,6 +171,8 @@ public:
     struct FilterSettings_t
     {
         ImGuiCustomTextFilter textFilter;
+        bool searchByGuid = false;
+        bool searchByRegex = false;
     } filter;
 
     ImFont* GetDefaultFont() const { return defaultFont; };

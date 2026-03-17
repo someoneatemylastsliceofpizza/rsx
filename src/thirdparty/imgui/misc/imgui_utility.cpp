@@ -97,6 +97,42 @@ static void UtilSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandler*
     buf->append("\n");
 }
 
+// filter settings
+static void* FilterSettings_ReadOpen(ImGuiContext* const ctx, ImGuiSettingsHandler* const handler, const char* const name)
+{
+    UNUSED(handler);
+    UNUSED(ctx);
+    UNUSED(name);
+
+    return FilterConfig;
+}
+
+static void FilterSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandler* const handler, void* const entry, const char* const line)
+{
+    UNUSED(handler);
+    UNUSED(ctx);
+
+    if (entry)
+    {
+        ImGuiHandler::FilterSettings_t* const cfg = static_cast<ImGuiHandler::FilterSettings_t*>(entry);
+
+        int i;
+        ImGuiReadSetting("SearchByGuid=%i", cfg->searchByGuid, i, int);
+        ImGuiReadSetting("SearchByRegex=%i", cfg->searchByRegex, i, int);
+    }
+}
+
+static void FilterSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandler* handler, ImGuiTextBuffer* const buf)
+{
+    UNUSED(ctx);
+
+    buf->reserve(buf->size() + 64);
+    buf->appendf("[%s][filter]\n", handler->TypeName);
+    buf->appendf("SearchByGuid=%i\n", FilterConfig->searchByGuid ? 1 : 0);
+    buf->appendf("SearchByRegex=%i\n", FilterConfig->searchByRegex ? 1 : 0);
+    buf->append("\n");
+}
+
 // export settings
 static void* ExportSettings_ReadOpen(ImGuiContext* const ctx, ImGuiSettingsHandler* const handler, const char* const name)
 {
@@ -354,10 +390,19 @@ void ImGuiHandler::SetupHandler()
     previewSettingsHandler.ReadLineFn = PreviewSettings_ReadLine;
     previewSettingsHandler.WriteAllFn = PreviewSettings_WriteAll;
 
+    // filter / search settings
+    ImGuiSettingsHandler filterSettingsHandler = {};
+    filterSettingsHandler.TypeName = "FilterSettings";
+    filterSettingsHandler.TypeHash = ImHashStr("FilterSettings");
+    filterSettingsHandler.ReadOpenFn = FilterSettings_ReadOpen;
+    filterSettingsHandler.ReadLineFn = FilterSettings_ReadLine;
+    filterSettingsHandler.WriteAllFn = FilterSettings_WriteAll;
+
     ImGui::AddSettingsHandler(&assetSettingsHandler);
     ImGui::AddSettingsHandler(&utilSettingsHandler);
     ImGui::AddSettingsHandler(&exportSettingsHandler);
     ImGui::AddSettingsHandler(&previewSettingsHandler);
+    ImGui::AddSettingsHandler(&filterSettingsHandler);
     ImGui::LoadIniSettingsFromDisk(io.IniFilename);
 }
 
