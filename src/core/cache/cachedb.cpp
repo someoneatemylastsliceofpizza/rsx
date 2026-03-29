@@ -195,7 +195,7 @@ void CCacheDBManager::AddInternal(const CCacheEntry& entry)
 	m_cacheEntries.emplace(entry.guid, entry);
 }
 
-const uint32_t CCacheDBManager::LoadCRCFromFile(const std::string& path) const
+uint32_t CCacheDBManager::LoadCRCFromFile(const std::string& path) const
 {
 	if (!std::filesystem::exists(path) || std::filesystem::file_size(path) == 0ull)
 	{
@@ -211,7 +211,7 @@ const uint32_t CCacheDBManager::LoadCRCFromFile(const std::string& path) const
 	return tmp.fileCRC;
 }
 
-const uint32_t CCacheDBManager::ParseCRCFromFile(const std::string& path) const
+uint32_t CCacheDBManager::ParseCRCFromFile(const std::string& path) const
 {
 	constexpr size_t headerSize = sizeof(CacheDBHeader_t);
 

@@ -2,7 +2,7 @@
 
 #include <shared_mutex>
 
-#define RSX_CACHE_DB_FILENAME "rsx_cache_db.bin"
+constexpr const char RSX_CACHE_DB_FILENAME[] = "rsx_cache_db.bin";
 
 // v1: intial revision
 // v2: adds crc to header
@@ -91,8 +91,8 @@ public:
 private:
 	void AddInternal(const CCacheEntry& entry);
 
-	const uint32_t LoadCRCFromFile(const std::string& path) const;
-	const uint32_t ParseCRCFromFile(const std::string& path) const;
+	uint32_t LoadCRCFromFile(const std::string& path) const;
+	uint32_t ParseCRCFromFile(const std::string& path) const;
 	std::shared_ptr<char> UpgradeLegacyFile_V1(const std::string& path, std::shared_ptr<char> fileBuf, const size_t fileBufSize) const;
 
 private:
