@@ -3,8 +3,9 @@
 class CCommandLine
 {
 public:
-	CCommandLine(int argc, char* argv[]) : argc(argc), argv(argv)
+	CCommandLine(int _argc, char* _argv[]) : argc((uint32_t)_argc), argv(_argv)
 	{
+		assert(_argc >= 0);
 	};
 
 	const char* const GetSelfPath() const
@@ -16,7 +17,7 @@ public:
 	const bool HasParam(const char* const param) const
 	{
 		assert(param);
-		for (int i = 1; i < argc; ++i)
+		for (uint32_t i = 1; i < argc; ++i)
 		{
 			if (strcmp(argv[i], param) == 0)
 			{
@@ -27,10 +28,10 @@ public:
 		return false;
 	}
 
-	const int GetParamIdx(const char* const param) const
+	const uint32_t GetParamIdx(const char* const param) const
 	{
 		assert(param);
-		for (int i = 1; i < argc; ++i)
+		for (uint32_t i = 1; i < argc; ++i)
 		{
 			if (strcmp(argv[i], param) == 0)
 			{
@@ -38,17 +39,17 @@ public:
 			}
 		}
 
-		return -1;
+		return UINT32_MAX;
 	}
 
 	const char* const GetParamValue(const char* const param) const
 	{
 		assert(param);
-		const int idx = GetParamIdx(param);
-		return (idx != -1 && idx != argc-1) ? GetParamValue(idx+1) : nullptr;
+		const uint32_t idx = GetParamIdx(param);
+		return (idx != UINT32_MAX && idx != argc-1) ? GetParamValue(idx+1) : nullptr;
 	}
 
-	const char* const GetParamValue(const int idx) const
+	const char* const GetParamValue(const uint32_t idx) const
 	{
 		if (idx < 0 || idx >= argc)
 		{
@@ -89,7 +90,7 @@ public:
 	}
 
 private:
-	int argc;
+	uint32_t argc;
 	char** argv;
 };
 
