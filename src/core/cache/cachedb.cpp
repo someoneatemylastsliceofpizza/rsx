@@ -7,7 +7,8 @@ CCacheDBManager g_cacheDBManager;
 
 bool CCacheDBManager::SaveToFile(const std::string& path)
 {
-	HANDLE fileHandle = WaitForFileHandle(250u, 10000u, path.c_str(), (GENERIC_READ | GENERIC_WRITE), FILE_SHARE_READ, NULL, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	HANDLE fileHandle = WaitForFileHandle(250u, 10000u, path.c_str(),
+		(GENERIC_READ | GENERIC_WRITE), FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 
 	if (fileHandle == INVALID_HANDLE_VALUE)
 	{
