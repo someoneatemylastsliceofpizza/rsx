@@ -79,7 +79,7 @@ void HandleListExportPakAssets(const HWND handle, std::vector<CGlobalAssetData::
     HandleListExport(handle, assetNames);
 }
 
-void HandleListExport(const HWND handle, std::vector<std::string> listElements)
+void HandleListExport(const HWND handle, const std::vector<std::string>& listElements)
 {
     // We are in pak load now.
     //inJobAction = true;
