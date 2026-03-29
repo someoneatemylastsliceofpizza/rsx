@@ -98,9 +98,8 @@ static void TraverseAssetDependencies(CPakAsset* const asset, std::deque<CPakAss
     std::vector<AssetGuid_t> dependencies;
     asset->getDependencies(dependencies);
 
-    for (int d = 0; d < dependencies.size(); ++d)
+    for (AssetGuid_t guid : dependencies)
     {
-        const AssetGuid_t guid = dependencies[d];
         CPakAsset* const depAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid.guid);
 
         if (!depAsset)
