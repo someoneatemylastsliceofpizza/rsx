@@ -541,7 +541,6 @@ void CreateBuffersForModelHitboxes(ModelParsedData_t* const parsedData, CDXDrawD
 
 				meshDrawData.numIndices = indices.size();
 			}
-
 		}
 	}
 }
@@ -609,27 +608,22 @@ void CreateBuffersForModelDrawData(ModelParsedData_t* const parsedData, CDXDrawD
 			meshDrawData->numIndices = mesh.indexCount;
 		}
 
-		if (!meshDrawData->weightsBuffer)
+		if (!meshDrawData->weightsBuffer && mesh.extraBoneWeightsSize > 0)
 		{
-			VertexWeight_t* const weights = parsedVertexData->GetWeights();
-
-			const int64_t numWeights = parsedVertexData->GetWeightCount();
-
-			VertexWeight_ForShader_t* wfs = new VertexWeight_ForShader_t[numWeights];
-			for (int64_t j = 0; j < numWeights; ++j)
-				wfs[j] = weights[j];
+			char* ebwData = mesh.extraBoneWeights;
+			int64_t ebwSize = mesh.extraBoneWeightsSize;
 
 			if(CreateD3DBuffer(g_dxHandler->GetDevice(),
-				&meshDrawData->weightsBuffer, static_cast<UINT>(numWeights) * sizeof(VertexWeight_ForShader_t),
+				&meshDrawData->weightsBuffer, static_cast<UINT>(ebwSize),
 				D3D11_USAGE_DYNAMIC, D3D11_BIND_SHADER_RESOURCE,
-				D3D11_CPU_ACCESS_WRITE, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(VertexWeight_ForShader_t), wfs
+				D3D11_CPU_ACCESS_WRITE, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(uint32_t), ebwData
 			))
 			{
 				D3D11_SHADER_RESOURCE_VIEW_DESC desc{};
 				desc.Format = DXGI_FORMAT_UNKNOWN;
 				desc.ViewDimension = D3D11_SRV_DIMENSION_BUFFER;
 				desc.Buffer.FirstElement = 0;
-				desc.Buffer.NumElements = static_cast<UINT>(numWeights);
+				desc.Buffer.NumElements = static_cast<UINT>(ebwSize / sizeof(uint32_t));
 
 				HRESULT hr = g_dxHandler->GetDevice()->CreateShaderResourceView(meshDrawData->weightsBuffer, &desc, &meshDrawData->weightsSRV);
 
