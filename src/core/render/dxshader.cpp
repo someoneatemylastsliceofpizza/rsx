@@ -20,6 +20,13 @@ CShader* CDXShaderManager::LoadShaderFromString(const std::string& path, const s
 
 	Log("* loading %s shader %s from string\n", GetShaderTypeName(type), path.c_str());
 
+#if defined(DEBUG_LOAD_SHADERS_DISK)
+	CShader* shd = this->LoadShader(path, type, useDefaultInputLayout);
+
+	if (shd)
+		return shd;
+#endif
+
 	const std::string shortName = GetShaderTypeShortName(type);
 	const std::string entrypoint = shortName + "_main";
 	const std::string shaderTarget = shortName + "_5_0";
