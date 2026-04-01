@@ -2,10 +2,13 @@ struct VS_Input
 {
     float3 position : POSITION;
     uint normal : NORMAL;
-    uint color : COLOR;
+    uint4 color : COLOR;
     float2 uv : TEXCOORD;
-    uint weights : BLENDWEIGHT;
+    uint unused : UNUSED;
+    int2 weights : BLENDWEIGHT;
+    uint4 blendIndices : BLENDINDICES;
 };
+
 struct VS_Output
 {
     float4 position : SV_POSITION;
@@ -22,14 +25,16 @@ cbuffer VS_TransformConstants : register(b0)
     float4x4 projectionMatrix;
 };
 
-struct VertexWeight_t
-{
-    float weight;
-    int bone;
-};
-
 StructuredBuffer<float3x4> g_boneMatrix : register(t60);
-StructuredBuffer<VertexWeight_t> g_weights : register(t61);
+StructuredBuffer<uint> g_boneWeightsExtra : register(t1);
+
+#define RCP_32768 (3.05175781e-05) // 1 / 32768
+#define SCALEWEIGHT(w) ((w) * RCP_32768 + RCP_32768)
+
+#define MATRIX_VEC0(m) (m._m00_m10_m20_m01)
+#define MATRIX_VEC1(m) (m._m11_m21_m02_m12)
+#define MATRIX_VEC2(m) (m._m22_m03_m13_m23)
+
 
 VS_Output vs_main(VS_Input input)
 {
@@ -43,9 +48,60 @@ VS_Output vs_main(VS_Input input)
     // float3 pos = input.position.xzy;
     
     // either have to use xzy or -x y z to get accurate uvs
-    float3 pos = input.position.xzy;
+    float3 pos = input.position.xyz;
 
-    output.position = mul(float4(pos, 1.f), modelMatrix);
+    // Keep track of the sum of all weights applied so far to this vertex
+    float totalWeight = 0;
+    
+    float firstBlendWeight = SCALEWEIGHT(input.weights.x);
+    totalWeight += firstBlendWeight;
+    
+    float4 r0 = MATRIX_VEC0(g_boneMatrix[input.blendIndices.x]) * firstBlendWeight;
+    float4 r1 = MATRIX_VEC1(g_boneMatrix[input.blendIndices.x]) * firstBlendWeight;
+    float4 r2 = MATRIX_VEC2(g_boneMatrix[input.blendIndices.x]) * firstBlendWeight;
+    
+    float3 bonePos = float3(r0.w, r1.w, r2.w);
+    
+    // If extra blends exist, input.weights.y forms part of the starting index for extra blends
+    uint extraBlendsStartIndex = /*(input.blendIndices.z << 16) | */input.weights.y;
+    for (int i = 1; i < input.blendIndices.w; ++i)
+    {
+        uint extraWeightPacked = g_boneWeightsExtra[extraBlendsStartIndex + (i - 1)];
+        
+        uint ewBoneIndex = (extraWeightPacked >> 16) & 0xffff;
+        float ewWeight = SCALEWEIGHT((extraWeightPacked) & 0xffff);
+        
+        float3x4 ewBoneMatrix = g_boneMatrix[ewBoneIndex];
+        
+        r0 += MATRIX_VEC0(ewBoneMatrix) * ewWeight;
+        r1 += MATRIX_VEC1(ewBoneMatrix) * ewWeight;
+        r2 += MATRIX_VEC2(ewBoneMatrix) * ewWeight;
+        
+        bonePos += float3(r0.w, r1.w, r2.w);
+        
+        totalWeight += ewWeight;
+    }
+    
+    // Final bone takes all of the rest of the weighting
+    float finalBlendWeight = 1 - totalWeight;
+    
+    if (finalBlendWeight > 0)
+    {
+        float3x4 finalBoneMatrix = g_boneMatrix[input.blendIndices.y];
+        
+        r0 += MATRIX_VEC0(finalBoneMatrix) * finalBlendWeight;
+        r1 += MATRIX_VEC1(finalBoneMatrix) * finalBlendWeight;
+        r2 += MATRIX_VEC2(finalBoneMatrix) * finalBlendWeight;
+    
+        bonePos += float3(r0.w, r1.w, r2.w);
+    }
+    
+    float3 worldPosition = float3(
+        dot(input.position, r0.xyz) + bonePos.x,
+        dot(input.position, r1.xyz) + bonePos.y,
+        dot(input.position, r2.xyz) + bonePos.z);
+    
+    output.position = mul(float4(worldPosition, 1.f), modelMatrix);
     output.position = mul(output.position, viewMatrix);
     output.position = mul(output.position, projectionMatrix);
 
@@ -54,7 +110,7 @@ VS_Output vs_main(VS_Input input)
     //output.color = input.color;
     
     // this is just wrong
-    output.color = float4((input.color & 0xff) / 255.f, ((input.color << 8) & 0xff) / 255.f, ((input.color << 16) & 0xff) / 255.f, ((input.color << 24) & 0xff) / 255.f);
+    // output.color = float4((input.color & 0xff) / 255.f, ((input.color << 8) & 0xff) / 255.f, ((input.color << 16) & 0xff) / 255.f, ((input.color << 24) & 0xff) / 255.f);
 
     // todo: check if normal needs to be modified in any way like the position
     bool sign = (input.normal >> 28) & 1;
