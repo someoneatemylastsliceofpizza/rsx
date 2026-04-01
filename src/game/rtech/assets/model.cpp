@@ -312,10 +312,24 @@ static void ParseModelVertexData_v9(CPakAsset* const asset, ModelAsset* const mo
 
                     meshData.bodyPartIndex = bdyIdx;
 
+                    if (mesh->extraBoneWeightSize)
+                    {
+                        char* ebw = new char[mesh->extraBoneWeightSize];
+                        memcpy_s(ebw, mesh->extraBoneWeightSize, mesh->pBoneWeight(vgHdr), mesh->extraBoneWeightSize);
+
+                        meshData.extraBoneWeights = ebw;
+                        meshData.extraBoneWeightsSize = mesh->extraBoneWeightSize;
+                    }
+                    else
+                    {
+                        meshData.extraBoneWeights = nullptr;
+                        meshData.extraBoneWeightsSize = 0;
+                    }
+
                     lodData.vertexCount += mesh->vertCount;
                     lodData.indexCount += mesh->indexCount;
 
-                    meshData.ParseTexcoords();                    
+                    meshData.ParseTexcoords();
 
                     const char* const rawVertexData = mesh->pVertices(vgHdr);// pointer to all of the vertex data for this mesh
                     const vvw::mstudioboneweightextra_t* const weights = mesh->pBoneWeight(vgHdr);
@@ -469,6 +483,21 @@ static void ParseModelVertexData_v12_1(CPakAsset* const asset, ModelAsset* const
                         meshData.indexCount = static_cast<uint32_t>(mesh->indexCount);
 
                         meshData.bodyPartIndex = bdyIdx;
+
+                        if (mesh->extraBoneWeightSize)
+                        {
+                            char* ebw = new char[mesh->extraBoneWeightSize];
+                            memcpy_s(ebw, mesh->extraBoneWeightSize, mesh->pBoneWeights(), mesh->extraBoneWeightSize);
+
+                            meshData.extraBoneWeights = ebw;
+                            meshData.extraBoneWeightsSize = mesh->extraBoneWeightSize;
+                        }
+                        else
+                        {
+                            meshData.extraBoneWeights = nullptr;
+                            meshData.extraBoneWeightsSize = 0;
+                        }
+
 
                         lodData.vertexCount += mesh->vertCount;
                         lodData.indexCount += mesh->indexCount;
@@ -632,6 +661,21 @@ static void ParseModelVertexData_v14(CPakAsset* const asset, ModelAsset* const m
                         meshData.indexCount = static_cast<uint32_t>(mesh->indexCount);
 
                         meshData.bodyPartIndex = bdyIdx;
+
+                        if (mesh->extraBoneWeightSize)
+                        {
+                            char* ebw = new char[mesh->extraBoneWeightSize];
+                            memcpy_s(ebw, mesh->extraBoneWeightSize, mesh->pBoneWeights(), mesh->extraBoneWeightSize);
+
+                            meshData.extraBoneWeights = ebw;
+                            meshData.extraBoneWeightsSize = mesh->extraBoneWeightSize;
+                        }
+                        else
+                        {
+                            meshData.extraBoneWeights = nullptr;
+                            meshData.extraBoneWeightsSize = 0;
+                        }
+
 
                         lodData.vertexCount += mesh->vertCount;
                         lodData.indexCount += mesh->indexCount;
@@ -822,6 +866,21 @@ static void ParseModelVertexData_v16(CPakAsset* const asset, ModelAsset* const m
                         meshData.indexCount = mesh->indexCount;
 
                         meshData.bodyPartIndex = bdyIdx;
+
+                        if (mesh->extraBoneWeightSize)
+                        {
+                            char* ebw = new char[mesh->extraBoneWeightSize];
+                            memcpy_s(ebw, mesh->extraBoneWeightSize, mesh->pBoneWeights(), mesh->extraBoneWeightSize);
+
+                            meshData.extraBoneWeights = ebw;
+                            meshData.extraBoneWeightsSize = mesh->extraBoneWeightSize;
+                        }
+                        else
+                        {
+                            meshData.extraBoneWeights = nullptr;
+                            meshData.extraBoneWeightsSize = 0;
+                        }
+
 
                         lodData.vertexCount += mesh->vertCount;
                         lodData.indexCount += mesh->indexCount;
