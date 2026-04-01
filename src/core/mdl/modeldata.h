@@ -100,7 +100,12 @@ struct ModelMeshData_t
 		weightsPerVert(mesh.weightsPerVert), weightsCount(mesh.weightsCount), texcoordCount(mesh.texcoordCount), texcoodIndices(mesh.texcoodIndices), materialId(mesh.materialId), materialAsset(mesh.materialAsset), bodyPartIndex(mesh.bodyPartIndex), extraBoneWeights(nullptr), extraBoneWeightsSize(0) {
 	};
 
-	~ModelMeshData_t() {}
+	~ModelMeshData_t()
+	{
+		// [rexx]: dw i'm uninstalling visual studio right now
+		if (extraBoneWeights && extraBoneWeights != (char*)(0xcdcdcdcdcdcdcdcd))
+			delete[] extraBoneWeights;
+	};
 
 	size_t meshVertexDataIndex;
 
