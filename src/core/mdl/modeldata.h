@@ -43,7 +43,9 @@ struct Vertex_t
 	uint32_t weightCount : 8;
 	uint32_t weightIndex : 24; // max weight count in a mesh is 1048576 (2^20), 24 bits gives plenty of headroom with a max value of 16777216 (2^24)
 
-	Vertex_t(float x, float y, float z) : position(x, y, z), normalPacked(0), color(0xFF, 0xFF, 0xFF, 0xFF), texcoord(INFINITY, INFINITY), weightCount(0), weightIndex(0) {};
+	uint64_t blendData; // opaque yippee!!!!! i fucking hate working on RSX
+
+	Vertex_t(float x, float y, float z) : position(x, y, z), normalPacked(0), color(0xFF, 0xFF, 0xFF, 0xFF), texcoord(INFINITY, INFINITY), weightCount(0), weightIndex(0), blendData(0) {};
 
 	static void ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const uint8_t* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, int& weightIdx);
 
@@ -83,6 +85,7 @@ struct Vertex_t
 		return out;
 	}
 };
+static_assert(offsetof(Vertex_t, blendData) == 32);
 
 //
 // PARSEDDATA
