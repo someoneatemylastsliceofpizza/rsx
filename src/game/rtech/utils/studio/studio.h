@@ -332,7 +332,7 @@ namespace vg
 		uint16_t weight[2];	// packed weight with a max value of 32767, divide value by 32767 to get weight. weights will always correspond to first and second bone
 		// if the mesh has extra bone weights the second value will be used as an index into the array of extra bone weights, max value of 65535.
 		inline float Weight(const int i) const { return UNPACKWEIGHT(weight[i]); }
-		inline const uint16_t Index() const { return weight[1]; }
+		inline const uint16_t ExtraWeightsStartIndex() const { return weight[1]; }
 	};
 
 	struct BlendWeightIndices_s
