@@ -80,6 +80,9 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 
 		offset += 8;
 
+		// Copy blend data into the vert struct
+		memcpy_s(&vert->blendData, sizeof(vert->blendData), blendWeights, sizeof(vert->blendData));
+
 		uint8_t curIdx = 0; // current weight
 		uint16_t remaining = 32767; // 'weight' remaining to assign to the last bone
 
