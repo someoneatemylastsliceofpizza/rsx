@@ -281,6 +281,23 @@ struct ContainerMessage_t
 	MessageType_e type;
 };
 
+struct LogErrorListInfo_t
+{
+	void Reset()
+	{
+		numWarnings = 0;
+		numErrors = 0;
+	}
+
+	void AddWarning() { numWarnings++; };
+	void AddError() { numErrors++; };
+
+	const std::pair<int, int> GetPair() const { return { numWarnings, numErrors }; };
+
+	int numWarnings;
+	int numErrors;
+};
+
 class CAssetContainer;
 
 class CAsset
@@ -475,6 +492,8 @@ public:
 	CAssetContainer* m_pakPatchMaster;
 
 	ContainerMessage_t* m_logMessages;
+
+	LogErrorListInfo_t m_logErrorListInfo;
 	uint32_t m_numLogMessages;
 
 	bool m_donePostLoad : 1;
@@ -529,12 +548,13 @@ public:
 		m_patchMasterEntries.clear();
 		m_pakLoadStatusMap.clear();
 
+		// Reset the log error/warning counters for the next pak load
+		m_logErrorListInfo.Reset();
+
 		m_donePostLoad = false;
 	}
 
 	void ProcessAssetsPostLoad();
-
-
 
 #define GET_LOG_MSG_VARIADIC(args, returnVar, fmt) std::vector<char> buf(1+std::vsnprintf(NULL, 0, fmt, args)); \
 											   va_list args2; \
@@ -571,6 +591,8 @@ public:
 
 		Log("WARNING [%s]: %s\n", sourceName.c_str(), msg.c_str());
 
+		m_logErrorListInfo.AddWarning();
+
 		LogMessages_Append(ContainerMessage_t::MessageType_e::MSG_WARNING, sourceName, msg);
 	}
 
@@ -585,6 +607,8 @@ public:
 		const std::string sourceName = container ? container->GetFilePath().filename().string() : "N/A";
 
 		Log("ERROR [%s]: %s\n", sourceName.c_str(), msg.c_str());
+
+		m_logErrorListInfo.AddError();
 
 		LogMessages_Append(ContainerMessage_t::MessageType_e::MSG_ERROR, sourceName, msg);
 	}
@@ -637,12 +661,14 @@ public:
 		{
 			for (uint32_t i = 0; i < m_numLogMessages; ++i)
 			{
+				free((void*)m_logMessages->timestampStr);
 				free((void*)m_logMessages->message);
-				free((void*)m_logMessages->message);
+				free((void*)m_logMessages->sourceName);
 			}
 
 			free(m_logMessages);
 
+			m_logErrorListInfo.Reset();
 			m_numLogMessages = 0;
 			m_logMessages = nullptr;
 		}

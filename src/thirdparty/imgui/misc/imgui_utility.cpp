@@ -452,7 +452,7 @@ void ImGuiHandler::SetStyle()
     colors[ImGuiCol_TableBorderStrong] = surface1;
     colors[ImGuiCol_TableBorderLight] = surface0;
     colors[ImGuiCol_TableRowBg] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
-    colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.06f);
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(1.0f, 1.0f, 1.0f, 0.005f);
     colors[ImGuiCol_TextSelectedBg] = surface2;
     colors[ImGuiCol_DragDropTarget] = yellow;
     colors[ImGuiCol_NavHighlight] = lavender;
