@@ -335,4 +335,14 @@ namespace ImGuiExt {
         ImGui::SetCursorPosX((avail.x - textWidth.x) * 0.5f);
         ImGui::Text(text.c_str());
     }
+
+    // The codicons font is shifted up slightly so this helper function adjusts the cursor position as needed
+    inline void IconText(const std::string& text, const ImVec4& col)
+    {
+        ImGui::PushStyleColor(ImGuiCol_Text, col);
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 2.f);
+        ImGui::TextUnformatted(text.c_str());
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.f);
+        ImGui::PopStyleColor();
+    }
 };

@@ -21,6 +21,7 @@
 #include <core/render/preview/preview.h>
 
 #include "render/ui/styles.h"
+#include <core/fonts/codicons.h>
 
 extern CDXParentHandler* g_dxHandler;
 extern std::atomic<uint32_t> g_maxConcurrentThreadCount;
@@ -449,6 +450,14 @@ void MainWnd_MenuBar()
 
             ImGui::EndMenu();
         }
+        
+        const std::pair<int, int> errorCounts = g_assetData.m_logErrorListInfo.GetPair();
+        
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 5.f);
+        ImGuiExt::IconText(ICON_CI_WARNING, ImVec4(1.f, 1.f, 0.f, 1.f));  ImGui::SameLine();
+        ImGui::Text("%i", errorCounts.first); ImGui::SameLine();
+        ImGuiExt::IconText(ICON_CI_ERROR, ImVec4(1.f, 0.f, 0.f, 1.f)); ImGui::SameLine();
+        ImGui::Text("%i", errorCounts.second);
 
 #if _DEBUG
         IMGUI_RIGHT_ALIGN_FOR_TEXT("Avg 1.000 ms/frame (100.0 FPS)"); // [rexx]: i hate this actually

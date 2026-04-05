@@ -22,6 +22,7 @@
     <ClInclude Include="core\cache\cachedb.h" />
     <ClInclude Include="core\crashhandler.h" />
     <ClInclude Include="core\features.h" />
+    <ClInclude Include="core\fonts\codicons.h" />
     <ClInclude Include="core\mdl\animdata.h" />
     <ClInclude Include="core\mdl\modeldata.h" />
     <ClInclude Include="core\mdl\qc.h" />

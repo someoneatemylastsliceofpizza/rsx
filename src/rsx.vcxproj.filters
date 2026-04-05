@@ -456,6 +456,9 @@
     <ClInclude Include="core\render\ui\styles.h">
       <Filter>core\render\ui</Filter>
     </ClInclude>
+    <ClInclude Include="core\fonts\codicons.h">
+      <Filter>core\fonts</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
