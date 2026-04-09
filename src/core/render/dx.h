@@ -80,7 +80,6 @@ struct DXMeshDrawData_t
 
     ID3D11InputLayout* inputLayout;
 
-    //std::shared_ptr<CTexture> albedoTexture;
     std::vector<DXDrawDataTexture_t> textures;
 
     size_t numIndices;
@@ -96,6 +95,36 @@ struct DXMeshDrawData_t
     bool doFrustumCulling : 1;
     bool hasGameShaders : 1;
     bool wireframe : 1;
+};
+
+// Mesh draw data for ""debug draw"" primitives
+struct DXMeshDrawData_DebugPrim_t
+{
+    DXMeshDrawData_DebugPrim_t(ID3D11Buffer* vertexBuf, ID3D11Buffer* indexBuf, DXGI_FORMAT indexFmt, D3D_PRIMITIVE_TOPOLOGY topo, UINT numIndices,UINT numVertices, float lifetime, bool isVisible, bool isWireframe, bool isIndexed, bool noDepthTest) :
+        vertexBuffer(vertexBuf), indexBuffer(indexBuf),
+        indexFormat(indexFmt), primTopology(topo),
+        numIndices(numIndices), numVertices(numVertices),
+        lifeRemaining(lifetime), visible(isVisible),
+        wireframe(isWireframe), indexed(isIndexed),
+        noDepthTest(noDepthTest)
+    {};
+
+    DXMeshDrawData_DebugPrim_t() = default;
+
+    ID3D11Buffer* vertexBuffer;
+    ID3D11Buffer* indexBuffer;
+
+    DXGI_FORMAT indexFormat;
+    D3D_PRIMITIVE_TOPOLOGY primTopology;
+
+    UINT numIndices;
+    UINT numVertices;
+    float lifeRemaining;
+
+    bool visible : 1;
+    bool wireframe : 1;
+    bool indexed : 1;
+    bool noDepthTest : 1;
 };
 
 struct VS_TransformConstants
@@ -241,6 +270,7 @@ public:
     }
 
     std::vector<DXMeshDrawData_t> meshBuffers;
+    std::vector<DXMeshDrawData_DebugPrim_t> debugPrims;
 
     ID3D11Buffer* transformsBuffer;
     ID3D11Buffer* modelInstanceBuffer;
@@ -266,15 +296,15 @@ public:
 
     void SetPSResource(uint8_t bindPoint, ID3D11ShaderResourceView* srv)
     {
-        if (!pixelShaderResources.contains(bindPoint))
-            pixelShaderResources[bindPoint] = srv;
+        pixelShaderResources[bindPoint] = srv;
     };
 
     void SetVSResource(uint8_t bindPoint, ID3D11ShaderResourceView* srv)
     {
-        if (!vertexShaderResources.contains(bindPoint))
-            vertexShaderResources[bindPoint] = srv;
+        vertexShaderResources[bindPoint] = srv;
     };
+
+    void DrawLine(const Vector& start, const Vector& end, uint32_t col, bool noDepthTest = false, float width = 1.f, float duration = 0.f);
 };
 
 class CDXCamera

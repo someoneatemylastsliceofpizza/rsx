@@ -11,7 +11,7 @@
 
 extern CDXParentHandler* g_dxHandler;
 
-void Preview_Model(CDXDrawData* drawData)
+void Preview_Model(CDXDrawData* drawData, float dt)
 {
     ID3D11Device* const device = g_dxHandler->GetDevice();
     ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
@@ -169,6 +169,46 @@ void Preview_Model(CDXDrawData* drawData)
             // ==============================================================================
             ctx->IASetIndexBuffer(meshDrawData.indexBuffer, meshDrawData.indexFormat, 0u);
             ctx->DrawIndexed(static_cast<UINT>(meshDrawData.numIndices), 0u, 0u);
+        }
+
+        CShader* vertexShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("preview/prim_vs", s_PrimitiveVertexShader, eShaderType::Vertex, s_PrimitiveInputLayout, std::size(s_PrimitiveInputLayout));
+        CShader* pixelShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("preview/prim_ps", s_PrimitivePixelShader, eShaderType::Pixel);
+        
+        ctx->VSSetConstantBuffers(0u, 1u, &drawData->transformsBuffer);
+
+        auto iterator = drawData->debugPrims.begin();
+        while (iterator != drawData->debugPrims.end())
+        {
+            if (!iterator->visible)
+                continue;
+
+            ctx->IASetPrimitiveTopology(iterator->primTopology);
+
+            ctx->RSSetState(iterator->wireframe ? g_dxHandler->GetRasterizerStateWireFrame() : g_dxHandler->GetRasterizerState());
+
+            ctx->IASetInputLayout(vertexShader->GetInputLayout());
+            ctx->VSSetShader(vertexShader->Get<ID3D11VertexShader>(), nullptr, 0u);
+            ctx->PSSetShader(pixelShader->Get<ID3D11PixelShader>(), nullptr, 0u);
+
+            constexpr UINT vertexStride = sizeof(PrimitiveVertex_t);
+            ctx->IASetVertexBuffers(0u, 1u, &iterator->vertexBuffer, &vertexStride, &offset);
+
+            // ==============================================================================
+            ctx->IASetIndexBuffer(iterator->indexBuffer, DXGI_FORMAT_R16_UINT, 0u);
+
+            ctx->OMSetDepthStencilState(g_dxHandler->GetDepthStencilState(false), 1u);
+
+            if (iterator->indexed)
+                ctx->DrawIndexed(iterator->numIndices, 0u, 0u);
+            else
+                ctx->Draw(iterator->numVertices, 0u);
+
+            iterator->lifeRemaining -= dt;
+
+            if (iterator->lifeRemaining <= 0)
+                iterator = drawData->debugPrims.erase(iterator);
+            else
+                iterator++;
         }
     }
     else assertm(0, "Failed to load shaders for model preview.");

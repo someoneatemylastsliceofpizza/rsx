@@ -5,6 +5,7 @@
 #include <thirdparty/imgui/backends/imgui_impl_win32.h>
 
 #include <core/window.h>
+#include <core/render/preview/preview.h>
 
 #include <thirdparty/directxtex/DirectXTex.h>
 
@@ -795,7 +796,12 @@ bool CDXParentHandler::CreateMisc()
     if (!GenerateTexture2D(UINT32_MAX, sizeof(uint16_t), DXGI_FORMAT_R16_TYPELESS, 2048, 2048, 1, 0, false, &m_staticShadowTexture, &m_staticShadowTextureSRV))
         return false;
 
-    this->GetScene().previewGrid.CreateBuffers(m_pDevice, m_pShaderManager);
+    auto& grid = this->GetScene().previewGrid;
+
+    grid.CreateBuffers(m_pDevice);
+
+    grid.vertexShader = m_pShaderManager->LoadShaderFromString("preview/prim_vs", s_PrimitiveVertexShader, eShaderType::Vertex, s_PrimitiveInputLayout, std::size(s_PrimitiveInputLayout));
+    grid.pixelShader = m_pShaderManager->LoadShaderFromString("preview/prim_ps", s_PrimitivePixelShader, eShaderType::Pixel);
 
     // todo: use an actual cubemap
     //DirectX::TexMetadata meta;
@@ -1086,4 +1092,45 @@ void CDXCamera::CommitCameraDataBufferUpdates()
 
         ctx->Unmap(this->bufCommonPerCamera, 0);
     }
+}
+
+void CDXDrawData::DrawLine(const Vector& start, const Vector& end, uint32_t col, bool noDepthTest, float width, float duration)
+{
+    assertm(width == 1.f, "Line thickness is currently not supported");
+
+    const PrimitiveVertex_t verts[] = {
+        { start, col },
+        { end,   col }
+    };
+
+    DXMeshDrawData_DebugPrim_t prim = {};
+
+    prim.visible = true;
+    prim.wireframe = false;
+    prim.indexed = false;
+    prim.noDepthTest = noDepthTest;
+
+    prim.primTopology = D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
+
+    // If duration == 0: line lasts for a single frame
+    // If duration  < 0: line is permanent
+    // If duration  > 0: line lasts for N seconds
+    prim.lifeRemaining = duration < 0 ? INFINITY : duration;
+
+    prim.numVertices = std::size(verts);
+
+    D3D11_BUFFER_DESC desc = {};
+
+    desc.Usage = D3D11_USAGE_DYNAMIC;
+    desc.ByteWidth = sizeof(verts);
+    desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+    desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    desc.MiscFlags = 0;
+
+    D3D11_SUBRESOURCE_DATA srd{ verts };
+
+    if (FAILED(g_dxHandler->GetDevice()->CreateBuffer(&desc, &srd, &prim.vertexBuffer)))
+        return;
+
+    debugPrims.emplace_back(prim);
 }
