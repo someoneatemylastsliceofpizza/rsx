@@ -35,9 +35,7 @@ void Preview_Model(CDXDrawData* drawData, float dt)
 
     ctx->RSSetViewports(1u, &vp);
     ctx->RSSetState(g_dxHandler->GetRasterizerState());
-    ctx->OMSetDepthStencilState(g_dxHandler->GetDepthStencilState(), 1u);
-
-
+    ctx->OMSetDepthStencilState(g_dxHandler->GetDepthStencilState(true), 1u);
 
 #if defined(ADVANCED_MODEL_PREVIEW)
     // Update CBufCommonPerCamera
