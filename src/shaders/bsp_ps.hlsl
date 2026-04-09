@@ -1,3 +1,5 @@
+// SRC Symbol Name: s_BSPPixelShader
+
 struct VS_Output
 {
     float4 position : SV_POSITION;

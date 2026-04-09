@@ -1,3 +1,5 @@
+// SRC Symbol Name: s_VertexLitFlatShader
+
 struct VS_Input
 {
     float3 position : POSITION;
