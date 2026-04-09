@@ -35,7 +35,7 @@ static constexpr int s_MaxStudioTriIndices	= s_MaxStudioTriangles * 3; // max nu
 #define MAXSTUDIONAME			128
 #define MAXSTUDIOWEIGHTLIST		128
 
-#define UNPACKWEIGHT(w) static_cast<float>(w / 32767.f) // weights in vvw and vg are packed into a signed 16 bit value that uses the entire number range
+#define UNPACKWEIGHT(w) static_cast<float>((w+1)/32768.f) // weights in vvw and vg are packed into a signed 16 bit value that uses the entire number range
 
 //===================
 // STUDIO VERTEX DATA
