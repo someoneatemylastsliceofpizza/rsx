@@ -435,12 +435,13 @@ CDXDrawData* CBSPData::ConstructPreviewData()
 				if (mesh->triCount <= 0)
 					continue;
 
-				DXMeshDrawData_t meshDrawData;
+				DXMeshDrawData_t meshDrawData = {};
 				meshDrawData.indexFormat = DXGI_FORMAT_R32_UINT;
 
 				meshDrawData.doFrustumCulling = true;
 				meshDrawData.modelMins = model->mins;
 				meshDrawData.modelMaxs = model->maxs;
+				meshDrawData.visible = true;
 
 				const dmaterialsort_t* mtlSort = &materialLumpData[mesh->mtlSortIdx];
 
