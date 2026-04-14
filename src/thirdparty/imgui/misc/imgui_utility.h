@@ -176,9 +176,10 @@ public:
     ImFont* GetDefaultFont() const { return defaultFont; };
     ImFont* GetMonospaceFont() const { return monospaceFont; };
 
+    bool NoImGui() const { return noImGui; };
+
     // custom ImGui widgets
 
-    static void ProgressBarCentered(float fraction, const ImVec2& size_arg, const char* overlay, ProgressBarEvent_t* event);
 
 private:
     std::mutex eventMutex;
@@ -310,6 +311,7 @@ static std::string _labelPrefix(const char* const label, int inputRelPosX)
 
 // ImGui extensions and helper functions
 namespace ImGuiExt {
+    void ProgressBarCentered(float fraction, const ImVec2& size_arg, const char* overlay, ProgressBarEvent_t* event);
     void HelpMarker(const char* const desc);
     void Tooltip(const char* const text);
 

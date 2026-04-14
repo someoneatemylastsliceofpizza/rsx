@@ -604,7 +604,7 @@ void ImGuiHandler::HandleProgressBar()
 
         const uint32_t leftOverEvents = event->isInverted ? remainingEvents : numEvents - remainingEvents;
         const float progressFraction = std::clamp(static_cast<float>(leftOverEvents) / static_cast<float>(numEvents), 0.0f, 1.0f);
-        ProgressBarCentered(progressFraction, ImVec2(485, 48), std::format("{}/{}", leftOverEvents, numEvents).c_str(), event);
+        ImGuiExt::ProgressBarCentered(progressFraction, ImVec2(485, 48), std::format("{}/{}", leftOverEvents, numEvents).c_str(), event);
 
         foundTopLevelBar = true;
     }
@@ -614,9 +614,9 @@ void ImGuiHandler::HandleProgressBar()
 }
 
 // size_arg (for each axis) < 0.0f: align to end, 0.0f: auto, > 0.0f: specified size
-void ImGuiHandler::ProgressBarCentered(float fraction, const ImVec2& size_arg, const char* overlay, ProgressBarEvent_t* event)
+void ImGuiExt::ProgressBarCentered(float fraction, const ImVec2& size_arg, const char* overlay, ProgressBarEvent_t* event)
 {
-    if (g_pImGuiHandler->noImGui)
+    if (g_pImGuiHandler->NoImGui())
         return;
 
     using namespace ImGui;
@@ -654,7 +654,7 @@ void ImGuiHandler::ProgressBarCentered(float fraction, const ImVec2& size_arg, c
     if (overlay_size.x > 0.0f)
         RenderTextClipped(ImVec2(bb.Min.x, bb.Min.y), bb.Max, overlay, NULL, &overlay_size, ImVec2(0.5f, 0.5f), &bb);
 
-    if (event->fnCancelEvents)
+    if (event && event->fnCancelEvents)
     {
         // https://github.com/ocornut/imgui/issues/4157
         float cancelButtonWidth = ImGui::CalcTextSize("Cancel").x + style.FramePadding.x * 2.f;
