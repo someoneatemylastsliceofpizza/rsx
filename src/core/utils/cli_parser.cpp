@@ -1,5 +1,6 @@
 #include <pch.h>
 #include <core/utils/cli_parser.h>
+#include <core/utils/utils_general.h>
 
 std::vector<uint32_t> GetExportFilterTypes(const CCommandLine* const cli)
 {
@@ -48,3 +49,10 @@ std::vector<uint32_t> GetExportFilterTypes(const CCommandLine* const cli)
 
 	return types;
 }
+
+void GetTextFilterForExport(const char* filterString, TextFilter* filter)
+{
+	if(filterString)
+		filter->Build(filterString);
+}
+

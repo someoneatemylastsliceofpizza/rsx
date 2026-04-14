@@ -95,3 +95,4 @@ private:
 };
 
 std::vector<uint32_t> GetExportFilterTypes(const CCommandLine* const cli);
+void GetTextFilterForExport(const char* filterString, TextFilter* filter);

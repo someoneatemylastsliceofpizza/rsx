@@ -76,15 +76,16 @@ void OnCLILoadComplete(const CCommandLine* const cli)
 
     if (cli->HasParam("-export"))
     {
+        bool filterAssets = false;
         std::vector<CGlobalAssetData::AssetLookup_t>& assets = g_assetData.v_assets;
+        std::vector<CGlobalAssetData::AssetLookup_t> filteredAssets;
 
         std::vector<uint32_t> filterTypes = GetExportFilterTypes(cli);
-
         if (filterTypes.size() != 0)
         {
-            printf("\nEXPORT: Filtering assets for export using type string \"%s\" (%lld valid type%s)\n", cli->GetParamValue("--exporttypes"), filterTypes.size(), filterTypes.size() == 1 ? "" : "s");
+            filterAssets = true;
 
-            std::vector<CGlobalAssetData::AssetLookup_t> filteredAssets;
+            printf("\nEXPORT: Filtering assets for export using type string \"%s\" (%lld valid type%s)\n", cli->GetParamValue("--exporttypes"), filterTypes.size(), filterTypes.size() == 1 ? "" : "s");
 
             for (auto& it : assets)
             {
@@ -102,10 +103,45 @@ void OnCLILoadComplete(const CCommandLine* const cli)
                     filteredAssets.push_back(it);
             }
 
-            CThread(HandleExportAllPakAssets, &filteredAssets, g_ExportSettings.exportAssetDeps).join();
+            assets = filteredAssets;
         }
+
+        const char* const filterString = cli->GetParamValue("--exportfilter");
+        TextFilter nameFilter = {};
+        GetTextFilterForExport(filterString, &nameFilter);
+
+        if (!assets.empty() && nameFilter.IsActive())
+        {
+            filteredAssets.clear();
+
+            for (auto& it : assets)
+            {
+                const std::string& assetName = it.m_asset->GetAssetName();
+
+                if (nameFilter.PassFilter(assetName.c_str()))
+                    filteredAssets.push_back(it);
+                else
+                {
+                    const char* const inputText = nameFilter.inputBuf.c_str();
+                    const size_t inputLen = nameFilter.inputBuf.size();
+
+                    char* end;
+                    const uint64_t guid = strtoull(inputText, &end, 0);
+
+                    if (end == &inputText[inputLen])
+                    {
+                        if (guid == RTech::StringToGuid(assetName.c_str()))
+                            filteredAssets.push_back(it);
+                    }
+                }
+            }
+            assets = filteredAssets;
+        }
+
+        if (!assets.empty())
+            CThread(HandleExportAllPakAssets, &assets, g_ExportSettings.exportAssetDeps).join();
         else
-            CThread(HandleExportAllPakAssets, &g_assetData.v_assets, g_ExportSettings.exportAssetDeps).join();
+            Log("No assets!\n");
     }
 
     if (const char* const listPathStr = cli->GetParamValue("--list"))

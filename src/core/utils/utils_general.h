@@ -183,3 +183,185 @@ struct Color4
 };
 
 void WaitForDebugger();
+
+static const char* stristr(const char* haystack, const char* haystack_end, const char* needle, const char* needle_end)
+{
+    if (!needle_end)
+        needle_end = needle + strlen(needle);
+
+    const char un0 = (char)toupper(*needle);
+    while ((!haystack_end && *haystack) || (haystack_end && haystack < haystack_end))
+    {
+        if (toupper(*haystack) == un0)
+        {
+            const char* b = needle + 1;
+            for (const char* a = haystack + 1; b < needle_end; a++, b++)
+                if (toupper(*a) != toupper(*b))
+                    break;
+            if (b == needle_end)
+                return haystack;
+        }
+        haystack++;
+    }
+    return NULL;
+}
+
+// Adapted from ImGuiCustomTextFilter but minus the imgui part
+class TextFilter
+{
+public:
+    TextFilter()
+    {
+        grepCnt = 0;
+        //Build();
+    }
+
+    bool PassFilter(const char* text, const char* text_end = nullptr) const
+    {
+        if (filters.size() == 0)
+        {
+            return true;
+        }
+
+        if (text == nullptr)
+        {
+            text = "";
+            text_end = "";
+        }
+
+        for (const TxtRange& f : filters)
+        {
+            if (f.b == f.e)
+            {
+                continue;
+            }
+
+            if (f.b[0] == '-')
+            {
+                // exclude lookup
+                if (stristr(text, text_end, f.b + 1, f.e) != NULL)
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                // normal grep lookup
+                if (stristr(text, text_end, f.b, f.e) != NULL)
+                {
+                    return true;
+                }
+            }
+        }
+
+        // implicit * grep
+        if (grepCnt == 0)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    void Clear()
+    {
+        filters.clear();
+        grepCnt = 0;
+    };
+
+    bool IsActive() const
+    {
+        return !filters.empty();
+    };
+
+    inline char charToUpper(const char c)
+    {
+        return (c >= 'a' && c <= 'z') ? (c & ~0x20) : c;
+    }
+
+    inline bool charIsBlank(const char c)
+    {
+        return c == ' ' || c == '\t';
+    }
+
+    struct TxtRange
+    {
+        const char* b;
+        const char* e;
+
+        TxtRange()
+        {
+            b = nullptr;
+            e = nullptr;
+        }
+
+        TxtRange(const char* b, const char* e) : b(b), e(e)
+        {
+        };
+
+        bool empty() const
+        {
+            return b == e;
+        }
+
+        void split(char separator, std::vector<TxtRange>* out) const
+        {
+            assert(out->size() == 0);
+
+            const char* wb = b;
+            const char* we = wb;
+            while (we < e)
+            {
+                if (*we == separator)
+                {
+                    out->push_back(TxtRange(wb, we));
+                    wb = (we + 1);
+                }
+                we++;
+            }
+
+            if (wb != we)
+            {
+                out->push_back(TxtRange(wb, we));
+            }
+        }
+    };
+
+    void Build(const char* input)
+    {
+        filters.clear();
+        inputBuf = input;
+
+        const size_t stringLen = strlen(input);
+        TxtRange txtInputRange(input, input + stringLen);
+        txtInputRange.split(',', &filters);
+
+        grepCnt = 0;
+        for (TxtRange& f : filters)
+        {
+            while (f.b < f.e && charIsBlank(f.b[0]))
+            {
+                f.b++;
+            }
+
+            while (f.e > f.b && charIsBlank(f.e[-1]))
+            {
+                f.e--;
+            }
+
+            if (f.empty())
+            {
+                continue;
+            }
+
+            if (f.b[0] != '-')
+            {
+                grepCnt += 1;
+            }
+        }
+    }
+
+    std::string inputBuf;
+    std::vector<TxtRange> filters;
+    int grepCnt;
+};
