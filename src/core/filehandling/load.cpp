@@ -9,24 +9,41 @@ extern std::atomic<bool> inJobAction;
 
 typedef void(HandleFileLoadCallback_t)(const CCommandLine* const);
 
+typedef std::array<std::vector<std::string>, CAsset::ContainerType::_COUNT> PathExtensionArray_t;
+
+void GroupPathByExtension(PathExtensionArray_t* pathsByExtension, const std::filesystem::path& path)
+{
+    const std::string extension = path.extension().string();
+
+    if (extension == ".rpak")
+        (*pathsByExtension)[CAsset::ContainerType::PAK].emplace_back(path.string());
+    else if (extension == ".mbnk")
+        (*pathsByExtension)[CAsset::ContainerType::AUDIO].emplace_back(path.string());
+    else if (extension == ".mdl")
+        (*pathsByExtension)[CAsset::ContainerType::MDL].emplace_back(path.string());
+    else if (extension == ".bpk")
+        (*pathsByExtension)[CAsset::ContainerType::BP_PAK].emplace_back(path.string());
+}
+
 static void HandleFileLoad(std::vector<std::string> filePaths, HandleFileLoadCallback_t cb = nullptr, const CCommandLine* const cli = nullptr)
 {
-    std::vector<std::string> pathsByExtension[CAsset::ContainerType::_COUNT];
+    PathExtensionArray_t pathsByExtension;
 
     for (auto& path : filePaths)
     {
-        const std::string extension = std::filesystem::path(path).extension().string();
+        std::filesystem::path fsPath(path);
 
-        if (extension == ".rpak")
-            pathsByExtension[CAsset::ContainerType::PAK].emplace_back(path);
-        else if (extension == ".mbnk")
-            pathsByExtension[CAsset::ContainerType::AUDIO].emplace_back(path);
-        else if (extension == ".mdl")
-            pathsByExtension[CAsset::ContainerType::MDL].emplace_back(path);
-        else if (extension == ".bpk")
-            pathsByExtension[CAsset::ContainerType::BP_PAK].emplace_back(path);
+        // If the path is a directory, try to load all paks in the directory
+        if (std::filesystem::is_directory(path))
+        {
+            for (const auto& dirEntry : std::filesystem::directory_iterator(fsPath))
+            {
+                if(dirEntry.is_regular_file())
+                    GroupPathByExtension(&pathsByExtension, dirEntry.path());
+            }
+        }
         else
-            Log("LOAD: Invalid file extension found in path: %s.\n", path.c_str());
+            GroupPathByExtension(&pathsByExtension, fsPath);
     }
 
     for (uint32_t i = 0; i < CAsset::ContainerType::_COUNT; ++i)
@@ -57,7 +74,7 @@ static void HandleFileLoad(std::vector<std::string> filePaths, HandleFileLoadCal
         g_assetData.ProcessAssetsPostLoad();
 
     // This callback is only really needed for CLI, since users aren't able to access the assets before postloading anyway
-    if (cli && IS_NOGUI(cli))
+    if (IS_NOGUI(cli))
     {
         if (cb && cli)
             cb(cli);
@@ -176,7 +193,7 @@ void HandleLoadFromCommandLine(const CCommandLine* const cli)
     {
         std::filesystem::path path = std::filesystem::path(cli->GetParamValue(i));
 
-        if (std::filesystem::exists(path) && std::filesystem::is_regular_file(path))
+        if (std::filesystem::exists(path))
         {
             filePaths.emplace_back(path.string());
         }
