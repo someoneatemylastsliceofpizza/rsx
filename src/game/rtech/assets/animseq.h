@@ -576,6 +576,8 @@ private:
 				{
 					const r5::mstudioikrule_v16_t* const pIkRule = animdesc->pIKRule(j); // bad ptr
 
+					ends[i] = reinterpret_cast<const char*>(pIkRule) + pIkRule->compressedikerrorindex;
+
 					if (pIkRule->compressedikerror.sectionframes == 0)
 						continue;
 
