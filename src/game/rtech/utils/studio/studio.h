@@ -335,10 +335,21 @@ namespace vg
 		inline const uint16_t ExtraWeightsStartIndex() const { return weight[1]; }
 	};
 
+	struct BlendWeightIndicesPacked_s
+	{
+		// (1 << 10) bones! (1024)
+		uint32_t firstBone : 10;
+		uint32_t lastBone : 10;
+		uint32_t unk : 4;
+		uint32_t boneCount : 8;
+	};
+
 	struct BlendWeightIndices_s
 	{
 		uint8_t bone[3];	// when the model doesn't have extra bone weights all three are used for bone indices, otherwise in order they will be used for: first bone, last bone (assumes vvd->vg), unused.
 		uint8_t boneCount;	// number of bones this vertex is weighted to excluding the base weight (value of 0 if only one weight, max of 15 with 16 weights)
+	
+		const BlendWeightIndicesPacked_s* Packed() const { return reinterpret_cast<const BlendWeightIndicesPacked_s*>(this); };
 	};
 
 	struct Vertex_t

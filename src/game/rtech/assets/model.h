@@ -181,6 +181,7 @@ enum class eMDLVersion : int
 	VERSION_18,
 	VERSION_19,
 	VERSION_19_1,
+	VERSION_19_2,
 
 	// bleh
 	VERSION_52,
@@ -273,6 +274,10 @@ inline const eMDLVersion GetModelVersionFromAsset(CPakAsset* const asset, CPakFi
 	}
 	case eMDLVersion::VERSION_19:
 	{
+		const r5::studiohdr_v19_2_t* const pHdr = reinterpret_cast<const r5::studiohdr_v19_2_t* const>(pMDL);
+		if (pHdr->sourceFilenameOffset == sizeof(r5::studiohdr_v19_2_t))
+			return eMDLVersion::VERSION_19_2;
+
 		if (pak->header()->createdTime >= s_MdlTimeStamp_V19_1)
 			return eMDLVersion::VERSION_19_1;
 
@@ -314,6 +319,9 @@ inline const eMDLVersion GetModelPakVersion(const int* const pHdr)
 	// v18
 	if (pHdrNew[100] == sizeof(r5::studiohdr_v17_t) || pHdrNew[59] == sizeof(r5::studiohdr_v17_t))
 		return eMDLVersion::VERSION_17;
+
+	if (pHdrNew[54] == sizeof(r5::studiohdr_v19_2_t))
+		return eMDLVersion::VERSION_19_2;
 
 	return eMDLVersion::VERSION_UNK;
 }
@@ -399,6 +407,11 @@ public:
 		case eMDLVersion::VERSION_19_1:
 		{
 			parsedData = ModelParsedData_t(reinterpret_cast<r5::studiohdr_v17_t*>(data), cpu->dataSizePhys, cpu->dataSizeModel);
+			break;
+		}
+		case eMDLVersion::VERSION_19_2:
+		{
+			parsedData = ModelParsedData_t(reinterpret_cast<r5::studiohdr_v19_2_t*>(data), cpu->dataSizePhys, cpu->dataSizeModel);
 			break;
 		}
 		}

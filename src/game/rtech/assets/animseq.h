@@ -82,6 +82,7 @@ static const std::map<int, eSeqVersion> s_seqVersionMap
 };
 
 constexpr uint64_t s_AnimSeqTimeStamp_V12_1 = 0x01DC1DF805C28000; // 09/05/2025 00:00:00
+constexpr uint64_t s_AnimRigTimeStamp_V7_V19_2 = 0x1DCD1EAF65B4000; // model v19.2, cascades into animrig, 22nd April 2026 00:00:00 (random time just before the release paks)
 
 inline const eSeqVersion GetAnimSeqVersionFromAsset(CPakAsset* const asset, CPakFile* const pak)
 {

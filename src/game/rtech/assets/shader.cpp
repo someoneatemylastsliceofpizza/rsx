@@ -74,6 +74,34 @@ void LoadShaderAsset(CAssetContainer* pak, CAsset* asset)
 
 		break;
 	}
+	case 19: // man idfk
+	{
+		// [rika]: there's some where shaders in newer versions that don't have cpu data, and point to places that don't really have a shader header
+		ShaderAssetHeader_v14_t* hdr = reinterpret_cast<ShaderAssetHeader_v14_t*>(pakAsset->header());
+
+		if (pakAsset->data()->HasValidDataPagePointer())
+		{
+			shaderAsset = new ShaderAsset(hdr, reinterpret_cast<ShaderAssetCPU_t*>(pakAsset->cpu()));
+		}
+		// there are shaders that have all of the following:
+		// - have no data
+		// - have an invalid shaderType
+		// - have a guid in the place of a pointer in unk_18
+		// the guid is for a shader asset, perhaps these are child assets of a shader?
+		// todo: get data from these parent shaders and parse
+		else // if no cpu data page, manually construct the values that can be taken from the header only
+		{
+			shaderAsset = new ShaderAsset();
+
+			shaderAsset->name = hdr->name;
+			shaderAsset->type = hdr->type;
+			shaderAsset->numShaders = 0;
+			shaderAsset->data = nullptr;
+			shaderAsset->dataSize = 0;
+		}
+
+		break;
+	}
 	default:
 	{
 		assertm(false, "unaccounted asset version, will cause major issues!");
@@ -170,7 +198,7 @@ ID3D11InputLayout* Shader_CreateInputLayoutFromFlags(const uint64_t inputFlags, 
 
 			desc.Format = (inputFlags & VLF_BLENDWEIGHT_PACKED) ? DXGI_FORMAT_R16G16_SINT : DXGI_FORMAT_R32G32_FLOAT;
 
-			elementOffset += (0x2132100 >> (((inputFlags >> 10) & 0x18) + 2)) & 0xC;
+			elementOffset += (0x2132100 >> (((inputFlags >> 10) & 0x18) + 2)) & 0xC;	
 		}
 
 		D3D11_INPUT_ELEMENT_DESC& desc = inputElements[elementIndex++];
@@ -285,6 +313,9 @@ ID3D11InputLayout* Shader_CreateInputLayoutFromFlags(const uint64_t inputFlags, 
 void PostLoadShaderAsset(CAssetContainer* const pak, CAsset* const asset)
 {
 	UNUSED(pak);
+
+	//if (asset->GetAssetVersion().majorVer == 19)
+	//	return;
 
 	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 

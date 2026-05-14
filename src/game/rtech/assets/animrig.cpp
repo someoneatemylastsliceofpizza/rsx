@@ -35,9 +35,14 @@ void LoadAnimRigAsset(CAssetContainer* const container, CAsset* const asset)
     case 7:
     {
         CPakFile* const pak = static_cast<CPakFile* const>(container);
-        const eMDLVersion ver = pak->header()->createdTime >= s_AnimSeqTimeStamp_V12_1 ? eMDLVersion::VERSION_19_1 : eMDLVersion::VERSION_19;
+        eMDLVersion ver = pak->header()->createdTime >= s_AnimSeqTimeStamp_V12_1 ? eMDLVersion::VERSION_19_1 : eMDLVersion::VERSION_19;
 
         AnimRigAssetHeader_v5_t* const hdr = reinterpret_cast<AnimRigAssetHeader_v5_t*>(pakAsset->header());
+
+        // i HAAAAATE this tool man
+        if (pak->header()->createdTime > s_AnimRigTimeStamp_V7_V19_2)
+            ver = eMDLVersion::VERSION_19_2;
+
         arigAsset = new AnimRigAsset(hdr, ver);
         break;
     }
@@ -107,6 +112,7 @@ void LoadAnimRigAsset(CAssetContainer* const container, CAsset* const asset)
         break;
     }
     case eMDLVersion::VERSION_19_1:
+    case eMDLVersion::VERSION_19_2:
     {
         ParseModelBoneData_v19(arigAsset->GetParsedData());
         ParseModelAttachmentData_v16(arigAsset->GetParsedData());
@@ -219,6 +225,7 @@ void PostLoadAnimRigAsset(CAssetContainer* const pak, CAsset* const asset)
         break;
     }
     case eMDLVersion::VERSION_19_1:
+    case eMDLVersion::VERSION_19_2:
     {
         ParseModelSequenceData_Stall_V19_1(arigAsset->GetParsedData(), reinterpret_cast<char* const>(arigAsset->data));
 

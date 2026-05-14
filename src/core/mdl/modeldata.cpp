@@ -19,7 +19,8 @@ extern CPreviewDrawData g_currentPreviewDrawData;
 // PARSEDDATA
 //
 #define VERT_DATA(t, d, o) reinterpret_cast<const t* const>(d + o)
-void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const uint8_t* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, int& weightIdx)
+#define MAP_BONE(b) bigBones ? reinterpret_cast<const uint16_t* const>(boneMap)[b] : (uint16_t)reinterpret_cast<const uint8_t* const>(boneMap)[b];
+bool Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, bool bigBones, int& weightIdx)
 {
 	int offset = 0;
 
@@ -92,7 +93,8 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 			assertm(blendIndices->boneCount < 16, "model had more than 16 bones on complex weights");
 
 			// first weight, we will always have this
-			weights[curIdx].bone = boneMap[blendIndices->bone[0]];
+			const int16_t firstBoneIndex = bigBones ? static_cast<uint16_t>(blendIndices->Packed()->firstBone) : blendIndices->bone[0];
+			weights[curIdx].bone = MAP_BONE(firstBoneIndex);
 			weights[curIdx].weight = blendWeights->Weight(0);
 			remaining -= blendWeights->weight[0];
 
@@ -103,7 +105,7 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 			{
 				auto extraWeight = weightExtra[blendWeights->ExtraWeightsStartIndex() + (curIdx - 1)];
 
-				weights[curIdx].bone = boneMap[extraWeight.bone];
+				weights[curIdx].bone = MAP_BONE(extraWeight.bone);
 				weights[curIdx].weight = extraWeight.Weight();
 
 				remaining -= extraWeight.weight;
@@ -114,7 +116,9 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 			// only hit if we have over 1 bone/weight
 			if (blendIndices->boneCount > 0)
 			{
-				weights[curIdx].bone = boneMap[blendIndices->bone[1]];
+				// im just using bigBones as a flag for >=v19.2 lmao
+				const int16_t finalBoneIndex = bigBones ? static_cast<uint16_t>(blendIndices->Packed()->lastBone) : blendIndices->bone[1];
+				weights[curIdx].bone = MAP_BONE(finalBoneIndex);
 				weights[curIdx].weight = UNPACKWEIGHT(remaining);
 
 				curIdx++;
@@ -124,9 +128,12 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 		{
 			assertm(blendIndices->boneCount < 3, "model had more than 3 bones on simple weights");
 
+			// There seems to be a condition here on v19.2, where if the model uses simple weights and this vert has less than two "extra" bones (i.e. boneCount < 2),
+			// the blend indices use the same packed system as the complex weights. If the model uses simple weights and has TWO extra bones, they revert to the old system?
+			//const bool singleExtraBigBone = bigBones && blendIndices->boneCount == 1;
 			for (uint8_t i = 0; i < blendIndices->boneCount; i++)
 			{
-				weights[curIdx].bone = boneMap[blendIndices->bone[curIdx]];
+				weights[curIdx].bone = MAP_BONE(blendIndices->bone[curIdx]);
 				weights[curIdx].weight = blendWeights->Weight(curIdx);
 
 				remaining -= blendWeights->weight[curIdx];
@@ -134,7 +141,7 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 				curIdx++;
 			}
 
-			weights[curIdx].bone = boneMap[blendIndices->bone[curIdx]];
+			weights[curIdx].bone = MAP_BONE(blendIndices->bone[curIdx]);
 			weights[curIdx].weight = UNPACKWEIGHT(remaining);
 
 			curIdx++;
@@ -145,6 +152,7 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 
 		weightIdx += curIdx;
 	}
+
 	// our mesh does not have weight data, use a set of default weights. 
 	// [rika]: this can only happen when a model has one bone
 	else
@@ -192,6 +200,8 @@ void Vertex_t::ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const wei
 	}
 
 	assertm(offset == mesh->vertCacheSize, "parsed data size differed from vertexCacheSize");
+
+	return true;
 }
 #undef VERT_DATA
 

@@ -1038,10 +1038,13 @@ void ParseAnimation(ModelSeq_t* const seqdesc, ModelAnim_t* const animdesc, cons
 {
 	const int boneCount = static_cast<int>(bones->size());
 
-	Vector positions[256]{};
-	Quaternion quats[256]{};
-	Vector scales[256]{};
-	RadianEuler rotations[256]{};
+	if (bones->size() > 1024)
+		Log("ParseAnimation: Animation %s exceeded 1024 bones.\n", animdesc->pszName());
+
+	std::vector<Vector> positions(boneCount);
+	std::vector<Quaternion> quats(boneCount);
+	std::vector<Vector> scales(boneCount);
+	std::vector<RadianEuler> rotations(boneCount);
 
 	if (animdesc->flags & eStudioAnimFlags::ANIM_DELTA)
 	{
