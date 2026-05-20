@@ -387,14 +387,14 @@ void CDXCamera::AddRotation(float yaw, float pitch, float roll)
 
 XMMATRIX CDXCamera::GetViewMatrix()
 {
-    Vector ttarget = { 0,0,0 };
+    extern PreviewSettings_t g_PreviewSettings;
+    XMVECTOR focusPos = XMVectorSet(g_PreviewSettings.previewPivotX, g_PreviewSettings.previewPivotY, g_PreviewSettings.previewPivotZ, 0.0f);
     XMVECTOR cameraPos = XMVectorSet(
-        ttarget.x + distanceToPivot * cosf(rotation.x) * sinf(rotation.y),
-        ttarget.y + distanceToPivot * sinf(rotation.x),
-        ttarget.z + distanceToPivot * cosf(rotation.x) * cosf(rotation.y),
+        focusPos.m128_f32[0] + distanceToPivot * cosf(rotation.x) * sinf(rotation.y) + g_PreviewSettings.previewCameraOriginX,
+        focusPos.m128_f32[1] + distanceToPivot * sinf(rotation.x) + g_PreviewSettings.previewCameraOriginY,
+        focusPos.m128_f32[2] + distanceToPivot * cosf(rotation.x) * cosf(rotation.y) + g_PreviewSettings.previewCameraOriginZ,
         0.0f
     );
-    XMVECTOR focusPos = XMVectorSet(ttarget.x, ttarget.y, ttarget.z, 0.0f);
     XMVECTOR upDir = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f); // Constant up
 
     return XMMatrixLookAtLH(cameraPos, focusPos, upDir);

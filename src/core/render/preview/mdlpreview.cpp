@@ -1,6 +1,7 @@
 #include <pch.h>
-#include <core/render/dx.h>
 #include <imgui.h>
+#include <core/render/dx.h>
+#include <core/render.h>
 #include <game/rtech/utils/utils.h>
 #include <misc/imgui_utility.h>
 #include <core/render/preview/preview.h>
@@ -238,19 +239,44 @@ void Preview_Model(CDXDrawData* drawData, float dt)
         ImGui::SetCursorPos(initCursorPos + ImVec2(3.f, 0.f));
         ImGui::Text("%s", fullTextSize.x > windowSize.x ? GetStringAfterLastSlash(drawData->modelName) : drawData->modelName);
 
-        ImGui::SetCursorPos(ImVec2(initCursorPos.x + 5.f, (initCursorPos.y + windowSize.y) - 200.f));
-        ImGui::VSliderFloat("##ModelZoom", ImVec2(20.f, 150.f), &camera->distanceToPivot, 300.f, 5.f, "", ImGuiSliderFlags_Logarithmic | ImGuiSliderFlags_NoInput);
+        static bool isDraggingPivot = false;
+        if (isSceneHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+        {
+            isDraggingPivot = true;
+        }
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle))
+        {
+            isDraggingPivot = false;
+        }
 
-        const bool isSliderHovered = ImGui::IsItemHovered();
+        if (isDraggingPivot)
+        {
+            const ImVec2 mouseDelta = ImGui::GetIO().MouseDelta;
+            if (mouseDelta.x != 0.0f || mouseDelta.y != 0.0f)
+            {
+                XMMATRIX viewMatrix = camera->GetViewMatrix();
+                XMMATRIX invView = XMMatrixInverse(nullptr, viewMatrix);
+                XMVECTOR camRight = invView.r[0];
+                XMVECTOR camUp = invView.r[1];
 
-        ImGui::SetCursorPos(ImVec2(initCursorPos.x + 11.f, (initCursorPos.y + windowSize.y) - 200.f));
-        ImGui::Text("+");
-        ImGui::SetCursorPos(ImVec2(initCursorPos.x + 13.f, (initCursorPos.y + windowSize.y) - 70.f));
-        ImGui::Text("-");
+                const float fovY = 0.25f * XM_PI;
+                const float worldHeight = 2.0f * camera->distanceToPivot * tanf(fovY * 0.5f);
+                const float factor = (avail.y > 0.0f) ? (worldHeight / avail.y) : 0.0f;
 
-        const bool mouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+                const float dx = mouseDelta.x * factor;
+                const float dy = mouseDelta.y * factor;
+
+                XMVECTOR delta = -dx * camRight + dy * camUp;
+
+                g_PreviewSettings.previewPivotX += XMVectorGetX(delta);
+                g_PreviewSettings.previewPivotY += XMVectorGetY(delta);
+                g_PreviewSettings.previewPivotZ += XMVectorGetZ(delta);
+            }
+        }
+
+        const bool mouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle);
         if (!g_pInput->applyMouseInput)
-            g_pInput->applyMouseInput = isSceneHovered && !isSliderHovered && mouseDown;
+            g_pInput->applyMouseInput = isSceneHovered && mouseDown;
         else
             g_pInput->applyMouseInput = mouseDown;
 

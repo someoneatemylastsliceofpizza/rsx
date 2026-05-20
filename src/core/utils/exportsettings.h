@@ -123,4 +123,11 @@ struct PreviewSettings_t
 {
     float previewCullDistance;
     float previewMovementSpeed;
+    float previewPivotX;
+    float previewPivotY;
+    float previewPivotZ;
+
+    float previewCameraOriginX;
+    float previewCameraOriginY;
+    float previewCameraOriginZ;
 };

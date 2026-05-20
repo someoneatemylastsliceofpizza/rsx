@@ -1,6 +1,7 @@
 #include <pch.h>
 #include <core/input/input.h>
 #include <core/render/dx.h>
+#include <core/render.h>
 
 #include <hidusage.h>
 #include <imgui.h>
@@ -58,6 +59,12 @@ LPARAM CInput::WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	case WM_LBUTTONUP:
 	{
 		this->OnMouseStateChanged(MouseButton_t::LEFT, uMsg == WM_LBUTTONDOWN);
+		break;
+	}
+	case WM_MBUTTONDOWN:
+	case WM_MBUTTONUP:
+	{
+		mouseStates[MouseButton_t::MIDDLE] = (uMsg == WM_MBUTTONDOWN);
 		break;
 	}
 	case WM_KILLFOCUS:
