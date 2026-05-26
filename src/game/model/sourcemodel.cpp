@@ -474,9 +474,18 @@ void* PreviewSourceModelAsset(CAsset* const asset, const bool firstFrameForAsset
         assertm(parsedData->lods.size(), "no lods in preview?");
         previewInfo.maxLODIndex = static_cast<uint8_t>(parsedData->lods.size()) - 1;
         previewInfo.selectedLODLevel = previewInfo.selectedLODLevel > previewInfo.maxLODIndex ? previewInfo.maxLODIndex : previewInfo.selectedLODLevel; // clamp it
+        previewInfo.selectedRigGuid = 0ull;
+        previewInfo.selectedModelGuid = 0ull;
+        previewInfo.selectedSequenceGuid = 0ull;
+        previewInfo.activeMeshGuid = asset->GetAssetGUID();
+        previewInfo.previewTime = 0.0f;
+        previewInfo.previewFrame = 0;
+        previewInfo.previewAnimationPlaying = true;
+        previewInfo.previewAnimationLoop = true;
+        previewInfo.showBones = false;
     }
 
-    return PreviewParsedData(&previewInfo, parsedData, srcMdlAsset->GetNameData(), asset->GetAssetGUID(), firstFrameForAsset);
+    return PreviewParsedData(&previewInfo, parsedData, parsedData, nullptr, srcMdlAsset->GetNameData(), asset->GetAssetGUID(), asset->GetAssetGUID(), firstFrameForAsset);
 }
 
 bool ExportSourceModelAsset(CAsset* const asset, const int setting)

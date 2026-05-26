@@ -2,6 +2,7 @@
 
 // [ASSET FEATURES]
 #define HAS_ODL_ASSET
+#define HAS_BONED_MODELS
 #define HAS_QC // unsure if QC is ready for release yet, so for now it's off!
 
 // [GENERAL FEATURES]

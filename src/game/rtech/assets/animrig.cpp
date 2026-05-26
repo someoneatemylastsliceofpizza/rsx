@@ -258,6 +258,189 @@ static bool ExportRawAnimRigAsset(CPakAsset* const asset, const AnimRigAsset* co
     return true;
 }
 
+void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
+{
+    CPakAsset* const pakAsset = static_cast<CPakAsset*>(asset);
+    assertm(pakAsset, "Asset should be valid.");
+
+    AnimRigAsset* const rigAsset = pakAsset->extraData<AnimRigAsset*>();
+    if (!rigAsset)
+        return nullptr;
+
+    static ModelPreviewInfo_t previewInfo;
+    if (firstFrameForAsset)
+    {
+        previewInfo.bodygroupModelSelected.clear();
+        previewInfo.selectedBodypartIndex = 0u;
+        previewInfo.selectedSkinIndex = 0u;
+        previewInfo.selectedLODLevel = 0u;
+        previewInfo.minLODIndex = 0u;
+        previewInfo.maxLODIndex = 0u;
+        previewInfo.selectedModelGuid = 0ull;
+        previewInfo.selectedSequenceGuid = 0ull;
+        previewInfo.selectedRigGuid = asset->GetAssetGUID();
+        previewInfo.activeMeshGuid = 0ull;
+        previewInfo.selectedAnimationIndex = 0;
+        previewInfo.previewTime = 0.0f;
+        previewInfo.previewFrame = 0;
+        previewInfo.previewAnimationPlaying = true;
+        previewInfo.previewAnimationLoop = true;
+        previewInfo.showBones = false;
+    }
+
+    ImGui::Text("Sequences: %i", rigAsset->numAnimSeqs);
+
+    struct PreviewOption_t
+    {
+        uint64_t guid;
+        std::string label;
+    };
+
+    std::vector<PreviewOption_t> modelOptions;
+    for (auto& lookup : g_assetData.v_assets)
+    {
+        CAsset* const candidateAsset = lookup.m_asset;
+        if (!candidateAsset || candidateAsset->GetAssetContainerType() != CAsset::ContainerType::PAK)
+            continue;
+
+        CPakAsset* const candidate = static_cast<CPakAsset*>(candidateAsset);
+        if (candidate->GetAssetType() != '_ldm' || !candidate->hasExtraData())
+            continue;
+
+        std::vector<AssetGuid_t> dependencies;
+        candidate->getDependencies(dependencies);
+        const bool dependsOnRig = std::ranges::any_of(dependencies, [&](const AssetGuid_t& guid) { return guid.guid == asset->GetAssetGUID(); });
+        if (!dependsOnRig)
+            continue;
+
+        modelOptions.push_back({ candidate->GetAssetGUID(), candidate->GetAssetName() });
+    }
+
+    auto resolveSelectedModel = [&]() -> ModelAsset*
+    {
+        if (!previewInfo.selectedModelGuid)
+            return nullptr;
+
+        if (CPakAsset* const modelPak = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedModelGuid))
+            return modelPak->extraData<ModelAsset*>();
+
+        return nullptr;
+    };
+
+    ModelAsset* selectedModel = resolveSelectedModel();
+
+    const char* modelLabel = "<none>";
+    if (selectedModel && selectedModel->name)
+        modelLabel = selectedModel->name;
+
+    if (ImGui::BeginCombo("Model", modelLabel))
+    {
+        const bool noModelSelected = (previewInfo.selectedModelGuid == 0ull);
+        if (ImGui::Selectable("<none>", noModelSelected))
+        {
+            previewInfo.selectedModelGuid = 0ull;
+            previewInfo.activeMeshGuid = 0ull;
+            previewInfo.bodygroupModelSelected.clear();
+            previewInfo.selectedAnimationIndex = 0;
+        }
+        if (noModelSelected)
+            ImGui::SetItemDefaultFocus();
+
+        for (const PreviewOption_t& option : modelOptions)
+        {
+            const bool isSelected = previewInfo.selectedModelGuid == option.guid;
+            if (ImGui::Selectable(option.label.c_str(), isSelected))
+            {
+                previewInfo.selectedModelGuid = option.guid;
+                previewInfo.activeMeshGuid = option.guid;
+                previewInfo.bodygroupModelSelected.clear();
+                previewInfo.selectedAnimationIndex = 0;
+                previewInfo.previewTime = 0.0f;
+            }
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+
+        ImGui::EndCombo();
+    }
+
+    selectedModel = resolveSelectedModel();
+
+    std::vector<PreviewOption_t> sequenceOptions;
+    sequenceOptions.reserve(rigAsset->numAnimSeqs);
+    for (int i = 0; i < rigAsset->numAnimSeqs; ++i)
+    {
+        const uint64_t guid = rigAsset->animSeqs[i].guid;
+        CPakAsset* const seqPak = g_assetData.FindAssetByGUID<CPakAsset>(guid);
+        if (!seqPak || !seqPak->hasExtraData())
+            continue;
+
+        sequenceOptions.push_back({ guid, seqPak->GetAssetName() });
+    }
+
+    if (previewInfo.selectedSequenceGuid != 0ull)
+    {
+        const auto it = std::find_if(sequenceOptions.begin(), sequenceOptions.end(), [&](const PreviewOption_t& option) { return option.guid == previewInfo.selectedSequenceGuid; });
+        if (it == sequenceOptions.end())
+        {
+            previewInfo.selectedSequenceGuid = 0ull;
+            previewInfo.selectedAnimationIndex = 0;
+        }
+    }
+
+    if (previewInfo.selectedSequenceGuid == 0ull && !sequenceOptions.empty())
+        previewInfo.selectedSequenceGuid = sequenceOptions.front().guid;
+
+    AnimSeqAsset* selectedSequence = nullptr;
+    if (previewInfo.selectedSequenceGuid)
+    {
+        if (CPakAsset* const seqPak = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedSequenceGuid))
+            selectedSequence = seqPak->extraData<AnimSeqAsset*>();
+    }
+
+    const char* sequenceLabel = "<none>";
+    if (selectedSequence)
+        sequenceLabel = selectedSequence->seqdesc.szlabel;
+
+    if (ImGui::BeginCombo("Sequence", sequenceLabel))
+    {
+        for (const PreviewOption_t& option : sequenceOptions)
+        {
+            const bool isSelected = previewInfo.selectedSequenceGuid == option.guid;
+            if (ImGui::Selectable(option.label.c_str(), isSelected))
+            {
+                previewInfo.selectedSequenceGuid = option.guid;
+                previewInfo.selectedAnimationIndex = 0;
+                previewInfo.previewTime = 0.0f;
+                previewInfo.previewFrame = 0;
+            }
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    ModelParsedData_t* meshParsedData = nullptr;
+    uint64_t meshGuid = 0ull;
+    if (selectedModel)
+    {
+        meshParsedData = selectedModel->GetParsedData();
+        meshGuid = previewInfo.selectedModelGuid;
+
+        if (previewInfo.bodygroupModelSelected.size() != meshParsedData->bodyParts.size())
+            previewInfo.bodygroupModelSelected.assign(meshParsedData->bodyParts.size(), 0ull);
+
+        if (!meshParsedData->lods.empty())
+        {
+            previewInfo.maxLODIndex = static_cast<uint8_t>(meshParsedData->lods.size()) - 1;
+            previewInfo.selectedLODLevel = std::min(previewInfo.selectedLODLevel, previewInfo.maxLODIndex);
+        }
+    }
+
+    const ModelSeq_t* const previewSequence = selectedSequence ? &selectedSequence->seqdesc : nullptr;
+    return PreviewParsedData(&previewInfo, meshParsedData, rigAsset->GetParsedData(), previewSequence, rigAsset->name, asset->GetAssetGUID(), meshGuid, firstFrameForAsset);
+}
+
 static const char* const s_PathPrefixARIG = s_AssetTypePaths.find(AssetType_t::ARIG)->second;
 bool ExportAnimRigAsset(CAsset* const asset, const int setting)
 {
@@ -359,7 +542,7 @@ void InitAnimRigAssetType()
         .headerAlignment = 8,
         .loadFunc = LoadAnimRigAsset,
         .postLoadFunc = PostLoadAnimRigAsset,
-        .previewFunc = nullptr,
+        .previewFunc = PreviewAnimRigAsset,
         .e = { ExportAnimRigAsset, 0, s_AnimRigExportSettingNames, ARRSIZE(s_AnimRigExportSettingNames) },
     };
 

@@ -903,7 +903,20 @@ struct ModelPreviewInfo_t
 	uint8_t selectedLODLevel = 0u;
 	uint8_t minLODIndex = 0u;
 	uint8_t maxLODIndex = 0u;
+
+	uint64_t selectedRigGuid = 0ull;
+	uint64_t selectedModelGuid = 0ull;
+	uint64_t selectedSequenceGuid = 0ull;
+	uint64_t activeMeshGuid = 0ull;
+	int selectedAnimationIndex = 0;
+
+	float previewTime = 0.0f;
+	int previewFrame = 0;
+
+	bool previewAnimationPlaying = true;
+	bool previewAnimationLoop = true;
+	bool showBones = false;
 };
 
-void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const parsedData, char* const assetName, const uint64_t assetGUID, const bool firstFrameForAsset);
+void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const meshParsedData, const ModelParsedData_t* const animParsedData, const ModelSeq_t* const previewSequence, char* const assetName, const uint64_t assetGUID, const uint64_t meshAssetGUID, const bool firstFrameForAsset);
 void PreviewSeqDesc(const ModelSeq_t* const seqdesc);

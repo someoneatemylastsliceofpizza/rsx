@@ -59,21 +59,7 @@ VS_Output vs_main(VS_Input input)
     // either have to use xzy or -x y z to get accurate uvs
     //float3 pos = input.position.xyz;
    
-    uint weightCount = input.weights & 0xFF;
-    uint weightIndex = (input.weights >> 8) & 0xFFFFFF; // technically doesn't need the mask but might as well be sure!
-    
-    float4 pos = float4(0, 0, 0, 0);
-    
-    
-    int i;
-    for (i = 0; i < weightCount; ++i)
-    {
-        VertexWeight_t wgt = g_weights[weightIndex + i];
-        
-        float4 newPosDelta = wgt.weight * mul(float4(input.position.xzy, 1.f), g_boneMatrix[wgt.bone]);
-        
-        pos += newPosDelta;
-    }
+    float4 pos = float4(input.position.xzy, 1.f);
     
     output.position = mul(pos, modelMatrix);
     output.position = mul(output.position, viewMatrix);

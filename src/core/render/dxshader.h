@@ -196,20 +196,7 @@ constexpr static const char s_PreviewVertexShader[] = {
 "VS_Output vs_main(VS_Input input)\n"
 "{\n"
 "VS_Output output;\n"
-#if defined(HAS_BONED_MODELS)
-"uint weightCount = input.weights & 0xFF;"
-"uint weightIndex = (input.weights >> 8) & 0xFFFFFF;"
-"float4 pos = float4(0, 0, 0, 0);"
-"int i;"
-"for (i = 0; i < weightCount; ++i)"
-"{"
-"VertexWeight_t wgt = g_weights[weightIndex + i];"
-"float4 newPosDelta = wgt.weight * mul(float4(input.position.xzy, 1.f), g_boneMatrix[wgt.bone]);"
-"pos += newPosDelta;"
-"}"
-#else
 "float4 pos = float4(input.position.xzy, 1.f);\n"
-#endif
 "output.position = mul(pos, modelMatrix);\n"
 "output.position = mul(output.position, viewMatrix);\n"
 "output.position = mul(output.position, projectionMatrix);\n"

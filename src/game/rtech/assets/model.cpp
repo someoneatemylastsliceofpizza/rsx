@@ -1557,12 +1557,148 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         assertm(parsedData->lods.size(), "no lods in preview?");
         previewInfo.maxLODIndex = static_cast<uint8_t>(parsedData->lods.size()) - 1;
         previewInfo.selectedLODLevel = previewInfo.selectedLODLevel > previewInfo.maxLODIndex ? previewInfo.maxLODIndex : previewInfo.selectedLODLevel; // clamp it
+        previewInfo.selectedRigGuid = 0ull;
+        previewInfo.selectedSequenceGuid = 0ull;
+        previewInfo.selectedModelGuid = 0ull;
+        previewInfo.activeMeshGuid = asset->GetAssetGUID();
+        previewInfo.selectedAnimationIndex = 0;
+        previewInfo.previewTime = 0.0f;
+        previewInfo.previewFrame = 0;
+        previewInfo.previewAnimationPlaying = true;
+        previewInfo.previewAnimationLoop = true;
+        previewInfo.showBones = false;
     }
 
     ImGui::Text("Rigs: %i", modelAsset->numAnimRigs);
     ImGui::Text("Sequences: %i", modelAsset->numAnimSeqs);
 
-    return PreviewParsedData(&previewInfo, parsedData, modelAsset->name, asset->GetAssetGUID(), firstFrameForAsset);
+    struct PreviewOption_t
+    {
+        uint64_t guid;
+        std::string label;
+    };
+
+    std::vector<PreviewOption_t> rigOptions;
+    rigOptions.reserve(modelAsset->numAnimRigs);
+    for (size_t i = 0; i < static_cast<size_t>(modelAsset->numAnimRigs); ++i)
+    {
+        const uint64_t guid = modelAsset->animRigs[i].guid;
+        CPakAsset* const rigAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid);
+        if (!rigAsset || !rigAsset->hasExtraData())
+            continue;
+
+        rigOptions.push_back({ guid, rigAsset->GetAssetName() });
+    }
+
+    auto resolveSelectedRig = [&]() -> AnimRigAsset*
+    {
+        if (!previewInfo.selectedRigGuid)
+            return nullptr;
+
+        if (CPakAsset* const rigAsset = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedRigGuid))
+            return rigAsset->extraData<AnimRigAsset*>();
+
+        return nullptr;
+    };
+
+    AnimRigAsset* selectedRig = resolveSelectedRig();
+
+    const char* rigLabel = "<none>";
+    if (selectedRig && selectedRig->name)
+        rigLabel = selectedRig->name;
+
+    if (ImGui::BeginCombo("Rig", rigLabel))
+    {
+        const bool noRigSelected = (previewInfo.selectedRigGuid == 0ull);
+        if (ImGui::Selectable("<none>", noRigSelected))
+        {
+            previewInfo.selectedRigGuid = 0ull;
+            previewInfo.selectedSequenceGuid = 0ull;
+            previewInfo.selectedAnimationIndex = 0;
+            previewInfo.previewTime = 0.0f;
+        }
+        if (noRigSelected)
+            ImGui::SetItemDefaultFocus();
+
+        for (const PreviewOption_t& option : rigOptions)
+        {
+            const bool isSelected = previewInfo.selectedRigGuid == option.guid;
+            if (ImGui::Selectable(option.label.c_str(), isSelected))
+            {
+                previewInfo.selectedRigGuid = option.guid;
+                previewInfo.selectedSequenceGuid = 0ull;
+                previewInfo.selectedAnimationIndex = 0;
+                previewInfo.previewTime = 0.0f;
+            }
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    selectedRig = resolveSelectedRig();
+
+    const AssetGuid_t* sequenceGuids = selectedRig ? selectedRig->animSeqs : modelAsset->animSeqs;
+    const int sequenceCount = selectedRig ? selectedRig->numAnimSeqs : modelAsset->numAnimSeqs;
+
+    std::vector<PreviewOption_t> sequenceOptions;
+    sequenceOptions.reserve(sequenceCount);
+    for (int i = 0; i < sequenceCount; ++i)
+    {
+        const uint64_t guid = sequenceGuids[i].guid;
+        CPakAsset* const seqAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid);
+        if (!seqAsset || !seqAsset->hasExtraData())
+            continue;
+
+        sequenceOptions.push_back({ guid, seqAsset->GetAssetName() });
+    }
+
+    if (previewInfo.selectedSequenceGuid != 0ull)
+    {
+        const auto it = std::find_if(sequenceOptions.begin(), sequenceOptions.end(), [&](const PreviewOption_t& option) { return option.guid == previewInfo.selectedSequenceGuid; });
+        if (it == sequenceOptions.end())
+        {
+            previewInfo.selectedSequenceGuid = 0ull;
+            previewInfo.selectedAnimationIndex = 0;
+        }
+    }
+
+    if (previewInfo.selectedSequenceGuid == 0ull && !sequenceOptions.empty())
+        previewInfo.selectedSequenceGuid = sequenceOptions.front().guid;
+
+    AnimSeqAsset* selectedSequenceAsset = nullptr;
+    if (previewInfo.selectedSequenceGuid)
+    {
+        if (CPakAsset* const seqAsset = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedSequenceGuid))
+            selectedSequenceAsset = seqAsset->extraData<AnimSeqAsset*>();
+    }
+
+    const char* sequenceLabel = "<none>";
+    if (selectedSequenceAsset)
+        sequenceLabel = selectedSequenceAsset->seqdesc.szlabel;
+
+    if (ImGui::BeginCombo("Sequence", sequenceLabel))
+    {
+        for (const PreviewOption_t& option : sequenceOptions)
+        {
+            const bool isSelected = previewInfo.selectedSequenceGuid == option.guid;
+            if (ImGui::Selectable(option.label.c_str(), isSelected))
+            {
+                previewInfo.selectedSequenceGuid = option.guid;
+                previewInfo.selectedAnimationIndex = 0;
+                previewInfo.previewTime = 0.0f;
+                previewInfo.previewFrame = 0;
+            }
+            if (isSelected)
+                ImGui::SetItemDefaultFocus();
+        }
+        ImGui::EndCombo();
+    }
+
+    const ModelParsedData_t* const animationParsedData = selectedRig ? selectedRig->GetParsedData() : parsedData;
+    const ModelSeq_t* const previewSequence = selectedSequenceAsset ? &selectedSequenceAsset->seqdesc : nullptr;
+
+    return PreviewParsedData(&previewInfo, parsedData, animationParsedData, previewSequence, modelAsset->name, asset->GetAssetGUID(), asset->GetAssetGUID(), firstFrameForAsset);
 }
 
 static bool ExportModelStreamedData(const ModelAsset* const modelAsset, std::filesystem::path& exportPath, const char* const streamedData, const char* const extension)

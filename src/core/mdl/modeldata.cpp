@@ -245,7 +245,19 @@ void Vertex_t::ParseVertexFromVTX(Vertex_t* const vert, VertexWeight_t* const we
 
 	assertm(nullptr != weights, "weight pointer should be valid");
 	vert->weightIndex = weightIdx;
-	vert->weightCount = oldVert.m_BoneWeights.numbones;
+	vert->weightCount = oldVert.m_BoneWeights.numbones > 0 ? oldVert.m_BoneWeights.numbones : 1;
+
+	if (oldVert.m_BoneWeights.numbones <= 0)
+	{
+		weights[0].weight = 1.0f;
+		weights[0].bone = isHwSkinned && pBoneStates
+			? static_cast<int16_t>(pBoneStates[pVertex->boneID[0]].newBoneID)
+			: pVertex->boneID[0];
+
+		weightIdx += 1;
+		mesh->weightsPerVert = static_cast<uint16_t>(vert->weightCount) > mesh->weightsPerVert ? static_cast<uint16_t>(vert->weightCount) : mesh->weightsPerVert;
+		return;
+	}
 
 	for (int i = 0; i < oldVert.m_BoneWeights.numbones; i++)
 	{
@@ -278,7 +290,17 @@ void Vertex_t::ParseVertexFromVTX(Vertex_t* const vert, VertexWeight_t* const we
 
 	assertm(nullptr != weights, "weight pointer should be valid");
 	vert->weightIndex = weightIdx;
-	vert->weightCount = oldVert.m_BoneWeights.numbones;
+	vert->weightCount = oldVert.m_BoneWeights.numbones > 0 ? oldVert.m_BoneWeights.numbones : 1;
+
+	if (oldVert.m_BoneWeights.numbones <= 0)
+	{
+		weights[0].bone = oldVert.m_BoneWeights.bone[0];
+		weights[0].weight = 1.0f;
+
+		weightIdx += 1;
+		mesh->weightsPerVert = static_cast<uint16_t>(vert->weightCount) > mesh->weightsPerVert ? static_cast<uint16_t>(vert->weightCount) : mesh->weightsPerVert;
+		return;
+	}
 
 	if (nullptr != pVVW)
 	{
@@ -1778,7 +1800,6 @@ bool ExportSeqDesc(const int setting, const ModelSeq_t* const seqdesc, std::file
 	}
 }
 
-#if defined(HAS_BONED_MODELS)
 void CalcMatrixForBone_Unparented(const ModelBone_t& bone, matrix3x4_t& matOut)
 {
 	matrix3x4_t mat;
@@ -1817,60 +1838,386 @@ void CalcMatrixForBone_Unparented(const ModelBone_t& bone, XMMATRIX& matOut)
 //
 // PREVIEWDATA
 //
-void UpdateModelBoneMatrix(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData)
+namespace
 {
-	ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
-
-	D3D11_MAPPED_SUBRESOURCE resource;
-	HRESULT hr = ctx->Map(
-		drawData->boneMatrixBuffer, 0,
-		D3D11_MAP_WRITE_DISCARD, 0,
-		&resource
-	);
-
-	assert(SUCCEEDED(hr));
-
-	if (FAILED(hr))
-		return;
-
-	XMMATRIX* boneArray = reinterpret_cast<XMMATRIX*>(resource.pData);
-
-	std::vector<XMMATRIX> tempBoneMatrices(parsedData->bones.size());
-
-	int i = 0;
-	for (const ModelBone_t& bone : parsedData->bones)
+	struct PreviewBonePose_t
 	{
-		CalcMatrixForBone_Unparented(bone, tempBoneMatrices[i]);
-		
-		// now handle parenting
-		if (bone.parent != -1)
-			tempBoneMatrices[i] = XMMatrixMultiply(tempBoneMatrices[bone.parent], tempBoneMatrices[i]);
+		Vector pos{};
+		Quaternion quat{};
+		Vector scale{ 1.0f, 1.0f, 1.0f };
+	};
 
-		const XMMATRIX inverseBindMat = parsedData->boneInverseBindMatrices.at(i);
-		const XMMATRIX multiplied = XMMatrixMultiply(tempBoneMatrices[i], inverseBindMat);
+	struct PreviewSequenceState_t
+	{
+		const ModelSeq_t* sequence = nullptr;
+		const ModelAnim_t* animation = nullptr;
+		const ModelParsedData_t* skeleton = nullptr;
+	};
 
-		boneArray[i] = multiplied;
+	void CalcMatrixForBone_Unparented(const PreviewBonePose_t& pose, XMMATRIX& matOut)
+	{
+		XMVECTOR quat = { pose.quat.x, pose.quat.y, pose.quat.z, pose.quat.w };
 
-		//if (bone.parent != -1)
-		//{
-		//	XMVECTOR scale;
-		//	XMVECTOR pos;
-		//	XMVECTOR rot;
-		//	XMMatrixDecompose(&scale, &rot, &pos, tempBoneMatrices[i]);
+		XMMATRIX rotationMatrix = XMMatrixRotationQuaternion(quat);
+		XMMATRIX translationMatrix = XMMatrixTranslation(pose.pos.x, pose.pos.y, pose.pos.z);
+		XMMATRIX transform = XMMatrixMultiply(rotationMatrix, translationMatrix);
+		XMMATRIX finalMatrix = XMMatrixMultiply(transform, XMMatrixScaling(pose.scale.x, pose.scale.y, pose.scale.z));
 
-		//	XMVECTOR parentPos;
-		//	XMMatrixDecompose(&scale, &rot, &parentPos, tempBoneMatrices[bone.parent]);
-		//	//MatrixGetColumn(boneArray[bone.parent], 3, parentPos);
-
-		//	constexpr uint32_t boneColour = 0xFF0000FF;
-
-		//	drawData->DrawLine(pos, parentPos, boneColour, true, 1.f, -1.f);
-		//}
-
-		i++;
+		matOut = finalMatrix;
 	}
 
-	ctx->Unmap(drawData->boneMatrixBuffer, 0);
+	void ClearDebugPrimitives(CDXDrawData* const drawData)
+	{
+		for (DXMeshDrawData_DebugPrim_t& prim : drawData->debugPrims)
+		{
+			DX_RELEASE_PTR(prim.vertexBuffer);
+			DX_RELEASE_PTR(prim.indexBuffer);
+		}
+
+		drawData->debugPrims.clear();
+	}
+
+	void BuildBoneNameRemap(std::vector<int>& remap, const std::vector<ModelBone_t>& targetBones, const std::vector<ModelBone_t>& sourceBones)
+	{
+		std::unordered_map<std::string_view, int> sourceByName;
+		sourceByName.reserve(sourceBones.size());
+
+		for (size_t i = 0; i < sourceBones.size(); ++i)
+			sourceByName.emplace(sourceBones[i].name, static_cast<int>(i));
+
+		remap.assign(targetBones.size(), -1);
+		for (size_t i = 0; i < targetBones.size(); ++i)
+		{
+			const auto it = sourceByName.find(targetBones[i].name);
+			if (it != sourceByName.end())
+				remap[i] = it->second;
+		}
+	}
+
+	int ResolvePreviewAnimationIndex(const ModelPreviewInfo_t* const info, const ModelSeq_t* const seqdesc)
+	{
+		if (!seqdesc || !seqdesc->AnimCount())
+			return -1;
+
+		if (info && info->selectedAnimationIndex >= 0 && info->selectedAnimationIndex < seqdesc->AnimCount())
+			return info->selectedAnimationIndex;
+
+		if (seqdesc->numblends > 0 && seqdesc->blends)
+		{
+			const int blendIndex = seqdesc->blends[0];
+			if (blendIndex >= 0 && blendIndex < seqdesc->AnimCount())
+				return blendIndex;
+		}
+
+		return 0;
+	}
+
+	Quaternion MultiplyQuaternion(const Quaternion& lhs, const Quaternion& rhs)
+	{
+		Quaternion result;
+		QuaternionMult(lhs, rhs, result);
+		return result;
+	}
+
+	Vector ConvertPositionToPreviewSpace(const Vector& sourcePosition)
+	{
+		return { sourcePosition.x, sourcePosition.z, sourcePosition.y };
+	}
+
+	XMMATRIX GetPreviewBasisMatrix()
+	{
+		return XMMATRIX(
+			1.0f, 0.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 1.0f, 0.0f,
+			0.0f, 1.0f, 0.0f, 0.0f,
+			0.0f, 0.0f, 0.0f, 1.0f
+		);
+	}
+
+	XMMATRIX ConvertSkinningMatrixToPreviewSpace(const XMMATRIX& sourceMatrix)
+	{
+		const XMMATRIX previewBasis = GetPreviewBasisMatrix();
+		return XMMatrixMultiply(XMMatrixMultiply(previewBasis, sourceMatrix), previewBasis);
+	}
+
+	XMMATRIX Matrix3x4ToXMMATRIX(const matrix3x4_t& matrix)
+	{
+		return XMMATRIX(
+			matrix[0][0], matrix[0][1], matrix[0][2], matrix[0][3],
+			matrix[1][0], matrix[1][1], matrix[1][2], matrix[1][3],
+			matrix[2][0], matrix[2][1], matrix[2][2], matrix[2][3],
+			0.0f,         0.0f,         0.0f,         1.0f
+		);
+	}
+
+	Vector TransformPointByMatrix(const matrix3x4_t& matrix, const Vector& point)
+	{
+		return {
+			(point.x * matrix[0][0]) + (point.y * matrix[0][1]) + (point.z * matrix[0][2]) + matrix[0][3],
+			(point.x * matrix[1][0]) + (point.y * matrix[1][1]) + (point.z * matrix[1][2]) + matrix[1][3],
+			(point.x * matrix[2][0]) + (point.y * matrix[2][1]) + (point.z * matrix[2][2]) + matrix[2][3]
+		};
+	}
+
+	void BuildWorldBoneMatrices(const std::vector<ModelBone_t>& bones, const std::vector<PreviewBonePose_t>& localPose, std::vector<matrix3x4_t>& worldMatrices)
+	{
+		worldMatrices.resize(bones.size());
+		for (size_t i = 0; i < bones.size(); ++i)
+		{
+			QuaternionMatrix(localPose[i].quat, localPose[i].pos, worldMatrices[i]);
+			worldMatrices[i][0][0] *= localPose[i].scale.x;
+			worldMatrices[i][1][0] *= localPose[i].scale.x;
+			worldMatrices[i][2][0] *= localPose[i].scale.x;
+			worldMatrices[i][0][1] *= localPose[i].scale.y;
+			worldMatrices[i][1][1] *= localPose[i].scale.y;
+			worldMatrices[i][2][1] *= localPose[i].scale.y;
+			worldMatrices[i][0][2] *= localPose[i].scale.z;
+			worldMatrices[i][1][2] *= localPose[i].scale.z;
+			worldMatrices[i][2][2] *= localPose[i].scale.z;
+
+			const int parent = bones[i].parent;
+			if (parent >= 0)
+			{
+				matrix3x4_t concatenated{};
+				ConcatTransforms(worldMatrices[parent], worldMatrices[i], concatenated);
+				worldMatrices[i] = concatenated;
+			}
+		}
+	}
+
+	bool EvaluateAnimationPose(const ModelSeq_t* const seqdesc, const ModelParsedData_t* const skeleton, const ModelAnim_t* const animdesc, const int frameIndex, std::vector<PreviewBonePose_t>& outPose)
+	{
+		if (!seqdesc || !skeleton || !animdesc)
+			return false;
+
+		const size_t boneCount = skeleton->bones.size();
+		outPose.resize(boneCount);
+		for (size_t i = 0; i < boneCount; ++i)
+		{
+			const ModelBone_t& bone = skeleton->bones[i];
+			outPose[i].pos = bone.pos;
+			outPose[i].quat = bone.quat;
+			outPose[i].scale = bone.scale;
+		}
+
+		if (!(animdesc->flags & eStudioAnimFlags::ANIM_VALID) || animdesc->parsedBufferIndex == invalidNoodleIdx)
+			return true;
+
+		const std::unique_ptr<char[]> noodle = seqdesc->parsedData.getIdx(animdesc->parsedBufferIndex);
+		if (!noodle)
+			return true;
+
+		CAnimData animData(noodle.get());
+		const bool isDelta = (animdesc->flags & eStudioAnimFlags::ANIM_DELTA) != 0;
+
+		for (size_t i = 0; i < boneCount; ++i)
+		{
+			const ModelBone_t& bone = skeleton->bones[i];
+			const uint8_t flags = animData.GetFlag(i);
+
+			if (isDelta)
+			{
+				if (flags & CAnimDataBone::ANIMDATA_POS)
+					outPose[i].pos = bone.pos + *animData.GetBonePosForFrame(static_cast<int>(i), frameIndex);
+
+				if (flags & CAnimDataBone::ANIMDATA_ROT)
+					outPose[i].quat = MultiplyQuaternion(bone.quat, *animData.GetBoneQuatForFrame(static_cast<int>(i), frameIndex));
+
+				if (flags & CAnimDataBone::ANIMDATA_SCL)
+				{
+					const Vector* const deltaScale = animData.GetBoneScaleForFrame(static_cast<int>(i), frameIndex);
+					outPose[i].scale = { bone.scale.x * deltaScale->x, bone.scale.y * deltaScale->y, bone.scale.z * deltaScale->z };
+				}
+			}
+			else
+			{
+				if (flags & CAnimDataBone::ANIMDATA_POS)
+					outPose[i].pos = *animData.GetBonePosForFrame(static_cast<int>(i), frameIndex);
+
+				if (flags & CAnimDataBone::ANIMDATA_ROT)
+					outPose[i].quat = *animData.GetBoneQuatForFrame(static_cast<int>(i), frameIndex);
+
+				if (flags & CAnimDataBone::ANIMDATA_SCL)
+					outPose[i].scale = *animData.GetBoneScaleForFrame(static_cast<int>(i), frameIndex);
+			}
+		}
+
+		return true;
+	}
+
+	void UpdateModelBoneMatrixInternal(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData, const std::vector<PreviewBonePose_t>* const localPose)
+	{
+		ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
+
+		D3D11_MAPPED_SUBRESOURCE resource;
+		HRESULT hr = ctx->Map(
+			drawData->boneMatrixBuffer, 0,
+			D3D11_MAP_WRITE_DISCARD, 0,
+			&resource
+		);
+
+		assert(SUCCEEDED(hr));
+
+		if (FAILED(hr))
+			return;
+
+		XMMATRIX* boneArray = reinterpret_cast<XMMATRIX*>(resource.pData);
+		std::vector<PreviewBonePose_t> defaultPose;
+		const std::vector<PreviewBonePose_t>* poseData = localPose;
+		if (!poseData)
+		{
+			defaultPose.resize(parsedData->bones.size());
+			for (size_t i = 0; i < parsedData->bones.size(); ++i)
+			{
+				defaultPose[i].pos = parsedData->bones[i].pos;
+				defaultPose[i].quat = parsedData->bones[i].quat;
+				defaultPose[i].scale = parsedData->bones[i].scale;
+			}
+			poseData = &defaultPose;
+		}
+
+		std::vector<matrix3x4_t> worldMatrices;
+		BuildWorldBoneMatrices(parsedData->bones, *poseData, worldMatrices);
+
+		for (size_t i = 0; i < parsedData->bones.size(); ++i)
+		{
+			const XMMATRIX inverseBindMat = parsedData->boneInverseBindMatrices.at(i);
+			const XMMATRIX skinningMatrix = XMMatrixMultiply(Matrix3x4ToXMMATRIX(worldMatrices[i]), inverseBindMat);
+			boneArray[i] = ConvertSkinningMatrixToPreviewSpace(skinningMatrix);
+		}
+
+		ctx->Unmap(drawData->boneMatrixBuffer, 0);
+	}
+
+	void UpdatePreviewSkinnedMeshes(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData, const std::vector<PreviewBonePose_t>& localPose)
+	{
+		if (!drawData || !parsedData)
+			return;
+
+		ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
+		if (!ctx)
+			return;
+
+		std::vector<matrix3x4_t> worldMatrices;
+		BuildWorldBoneMatrices(parsedData->bones, localPose, worldMatrices);
+
+		for (size_t meshIndex = 0; meshIndex < parsedData->lods.at(g_currentPreviewDrawData.activeLODLevel).meshes.size(); ++meshIndex)
+		{
+			const ModelMeshData_t& mesh = parsedData->lods.at(g_currentPreviewDrawData.activeLODLevel).meshes.at(meshIndex);
+			DXMeshDrawData_t* const meshDrawData = &drawData->meshBuffers[meshIndex];
+			if (!meshDrawData->vertexBuffer || mesh.meshVertexDataIndex == invalidNoodleIdx)
+				continue;
+
+			std::unique_ptr<char[]> parsedVertexDataBuf = parsedData->meshVertexData.getIdx(mesh.meshVertexDataIndex);
+			const CMeshData* const parsedVertexData = reinterpret_cast<CMeshData*>(parsedVertexDataBuf.get());
+			if (!parsedVertexData)
+				continue;
+
+			const Vertex_t* const srcVertices = parsedVertexData->GetVertices();
+			const VertexWeight_t* const srcWeights = parsedVertexData->GetWeights();
+			if (!srcVertices || !srcWeights)
+				continue;
+
+			if (mesh.vertCount == 0)
+				continue;
+
+			D3D11_MAPPED_SUBRESOURCE resource{};
+			if (FAILED(ctx->Map(meshDrawData->vertexBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &resource)))
+				continue;
+
+			if (!resource.pData)
+			{
+				ctx->Unmap(meshDrawData->vertexBuffer, 0);
+				continue;
+			}
+
+			Vertex_t* const dstVertices = reinterpret_cast<Vertex_t*>(resource.pData);
+			memcpy(dstVertices, srcVertices, sizeof(Vertex_t) * mesh.vertCount);
+
+			for (size_t vertexIndex = 0; vertexIndex < mesh.vertCount; ++vertexIndex)
+			{
+				const Vertex_t& srcVertex = srcVertices[vertexIndex];
+				Vector blendedPos{};
+				float totalWeight = 0.0f;
+
+				for (uint32_t weightIndex = 0; weightIndex < srcVertex.weightCount; ++weightIndex)
+				{
+					const VertexWeight_t& weight = srcWeights[srcVertex.weightIndex + weightIndex];
+					if (weight.bone < 0 || static_cast<size_t>(weight.bone) >= worldMatrices.size() || weight.weight <= 0.0f)
+						continue;
+
+					const ModelBone_t& bone = parsedData->bones[weight.bone];
+					if (!bone.poseToBone)
+						continue;
+
+					const Vector jointSpacePos = TransformPointByMatrix(*bone.poseToBone, srcVertex.position);
+					const Vector animatedPos = TransformPointByMatrix(worldMatrices[weight.bone], jointSpacePos);
+
+					blendedPos.x += animatedPos.x * weight.weight;
+					blendedPos.y += animatedPos.y * weight.weight;
+					blendedPos.z += animatedPos.z * weight.weight;
+					totalWeight += weight.weight;
+				}
+
+				if (totalWeight <= 0.0f)
+					continue;
+
+				dstVertices[vertexIndex].position = blendedPos;
+			}
+
+			ctx->Unmap(meshDrawData->vertexBuffer, 0);
+		}
+	}
+
+	void DrawPreviewBones(CDXDrawData* const drawData, const ModelParsedData_t* const skeleton, const std::vector<PreviewBonePose_t>& localPose)
+	{
+		ClearDebugPrimitives(drawData);
+
+		if (!skeleton || skeleton->bones.empty())
+			return;
+
+		std::vector<matrix3x4_t> worldMatrices;
+		BuildWorldBoneMatrices(skeleton->bones, localPose, worldMatrices);
+
+		for (size_t i = 0; i < skeleton->bones.size(); ++i)
+		{
+			const int parent = skeleton->bones[i].parent;
+			if (parent < 0)
+				continue;
+
+			Vector child{};
+			Vector parentVec{};
+			MatrixPosition(worldMatrices[i], child);
+			MatrixPosition(worldMatrices[parent], parentVec);
+
+			child = ConvertPositionToPreviewSpace(child);
+			parentVec = ConvertPositionToPreviewSpace(parentVec);
+
+			drawData->DrawLine(child, parentVec, 0xFF00C8FF, false, 1.0f, -1.0f);
+		}
+	}
+
+	bool ResolvePreviewSequenceState(const ModelPreviewInfo_t* const info, const ModelParsedData_t* const skeleton, const ModelSeq_t* const seqdesc, PreviewSequenceState_t& state)
+	{
+		state = {};
+
+		if (!skeleton || !seqdesc)
+			return false;
+
+		const int animIndex = ResolvePreviewAnimationIndex(info, seqdesc);
+		if (animIndex < 0)
+			return false;
+
+		state.sequence = seqdesc;
+		state.animation = seqdesc->anims + animIndex;
+		state.skeleton = skeleton;
+		return true;
+	}
+}
+
+void UpdateModelBoneMatrix(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData)
+{
+	UpdateModelBoneMatrixInternal(drawData, parsedData, nullptr);
 }
 
 // Calculates a matrix that translates from model-space to joint-space.
@@ -1879,7 +2226,7 @@ void CalculateBonesInverseBindMatrix(ModelParsedData_t* const parsedData)
 {
 	parsedData->boneInverseBindMatrices.resize(parsedData->bones.size());
 
-	std::vector<XMMATRIX> tempBoneMatrices(parsedData->bones.size());
+	std::vector<matrix3x4_t> tempBoneMatrices(parsedData->bones.size());
 
 	int i = 0;
 	for (const ModelBone_t& bone : parsedData->bones)
@@ -1888,13 +2235,18 @@ void CalculateBonesInverseBindMatrix(ModelParsedData_t* const parsedData)
 
 		// now handle parenting
 		if (bone.parent != -1)
-			tempBoneMatrices[i] = XMMatrixMultiply(tempBoneMatrices[bone.parent], tempBoneMatrices[i]);
+		{
+			matrix3x4_t concatenated{};
+			ConcatTransforms(tempBoneMatrices[bone.parent], tempBoneMatrices[i], concatenated);
+			tempBoneMatrices[i] = concatenated;
+		}
 		
 		XMVECTOR determinant;
-		parsedData->boneInverseBindMatrices[i] = XMMatrixInverse(&determinant, tempBoneMatrices[i]);
+		parsedData->boneInverseBindMatrices[i] = XMMatrixInverse(&determinant, Matrix3x4ToXMMATRIX(tempBoneMatrices[i]));
 
 		assert(determinant.m128_f32[0] != 0 && determinant.m128_f32[1] != 0 && determinant.m128_f32[2] != 0);
 		//XMMATRIX fuck = XMLoadFloat3x4((XMFLOAT3X4*)boneArray + i);
+		++i;
 	}
 }
 
@@ -1946,28 +2298,34 @@ void InitModelBoneMatrix(CDXDrawData* const drawData, ModelParsedData_t* const p
 	// Initial update for the bone matrices
 	UpdateModelBoneMatrix(drawData, parsedData);
 }
-#endif
-
-void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const parsedData, char* const assetName, const uint64_t assetGUID, const bool firstFrameForAsset)
+void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const meshParsedData, const ModelParsedData_t* const animParsedData, const ModelSeq_t* const previewSequence, char* const assetName, const uint64_t assetGUID, const uint64_t meshAssetGUID, const bool firstFrameForAsset)
 {
+	const bool hasMesh = meshParsedData && !meshParsedData->lods.empty();
+	const uint64_t resolvedMeshGuid = hasMesh ? meshAssetGUID : assetGUID;
+	const uint8_t activeLOD = hasMesh ? info->selectedLODLevel : 0u;
+
 	// [rika]: set up CDXDrawData
 	g_currentPreviewDrawData.CheckForMonitorChange();
 
-	if (assetGUID != g_currentPreviewDrawData.guid || g_currentPreviewDrawData.GetDrawData() == nullptr || info->selectedLODLevel != g_currentPreviewDrawData.activeLODLevel)
+	if (resolvedMeshGuid != g_currentPreviewDrawData.guid || g_currentPreviewDrawData.GetDrawData() == nullptr || activeLOD != g_currentPreviewDrawData.activeLODLevel)
 	{
 		g_currentPreviewDrawData.FreeDrawData();
 
 		CDXDrawData* const drawData = new CDXDrawData();
 
-		// this leaks mem?
-		drawData->meshBuffers.resize(parsedData->lods.at(info->selectedLODLevel).meshes.size());
+		if (hasMesh)
+			drawData->meshBuffers.resize(meshParsedData->lods.at(activeLOD).meshes.size());
+
 		drawData->modelName = assetName;
 		drawData->dataType = CDXDrawData::DrawDataType_e::MODEL;
 
-		CreateBuffersForModelDrawData(parsedData, drawData, info->selectedLODLevel);
-		CreateBuffersForModelHitboxes(parsedData, drawData);
+		if (hasMesh)
+		{
+			CreateBuffersForModelDrawData(meshParsedData, drawData, activeLOD);
+			CreateBuffersForModelHitboxes(meshParsedData, drawData);
+		}
 
-		g_currentPreviewDrawData.UpdateAssetInfo(drawData, assetGUID, info->selectedLODLevel);
+		g_currentPreviewDrawData.UpdateAssetInfo(drawData, resolvedMeshGuid, activeLOD);
 	}
 
 	CDXDrawData* const drawData = g_currentPreviewDrawData.GetDrawData();
@@ -1977,116 +2335,41 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	drawData->vertexShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("shaders/model_vs", s_PreviewVertexShader, eShaderType::Vertex);
 	drawData->pixelShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("shaders/model_ps", s_PreviewPixelShader, eShaderType::Pixel);
 
-	// [rika]: do the preview stuff here!
-	assertm(parsedData->lods.size() > 0, "no lods in preview?");
-	const ModelLODData_t& lodData = parsedData->lods.at(info->selectedLODLevel);
+	const ModelLODData_t* lodData = hasMesh ? &meshParsedData->lods.at(info->selectedLODLevel) : nullptr;
 
-	ImGui::Text("Bones: %llu", parsedData->bones.size());
-	ImGui::Text("LODs: %llu", parsedData->lods.size());
-	ImGui::Text("Local Sequences: %i", parsedData->NumLocalSeq());
-
-	if (info->minLODIndex != info->maxLODIndex)
-		ImGui::SliderScalar("LOD Level", ImGuiDataType_U8, &info->selectedLODLevel, &info->minLODIndex, &info->maxLODIndex);
-
-	if (parsedData->skins.size())
+	if (animParsedData)
 	{
-		ImGui::TextUnformatted("Skins:");
-		ImGui::SameLine();
-
-		// [rika]: cheat a little here since the first skin name should always be 'STUDIO_DEFAULT_SKIN_NAME'
-		static const char* label = nullptr;
-		if (firstFrameForAsset)
-			label = STUDIO_DEFAULT_SKIN_NAME;
-
-		if (ImGui::BeginCombo("##SKins", label, ImGuiComboFlags_NoArrowButton))
-		{
-			for (size_t i = 0; i < parsedData->skins.size(); i++)
-			{
-				const ModelSkinData_t& skin = parsedData->skins.at(i);
-
-				const bool isSelected = info->selectedSkinIndex == i || (firstFrameForAsset && info->selectedSkinIndex == info->lastSelectedSkinIndex);
-
-				if (ImGui::Selectable(skin.name, isSelected))
-				{
-					info->selectedSkinIndex = i;
-					label = skin.name;
-				}
-
-				if (isSelected) ImGui::SetItemDefaultFocus();
-			}
-
-			ImGui::EndCombo();
-		}
+		ImGui::Text("Bones: %llu", animParsedData->bones.size());
+		ImGui::Text("Local Sequences: %i", animParsedData->NumLocalSeq());
 	}
 
-
-	if (parsedData->bodyParts.size())
+	if (hasMesh)
 	{
-		ImGui::TextUnformatted("Bodypart:");
-		ImGui::SameLine();
+		ImGui::Text("LODs: %llu", meshParsedData->lods.size());
 
-		// [rika]: previous implemention was loading an invalid string upon loading different files without closing the tool
-		static const char* bodypartLabel = nullptr;
-		if (firstFrameForAsset)
-			bodypartLabel = parsedData->bodyParts.at(0).GetNameCStr();
+		if (info->minLODIndex != info->maxLODIndex)
+			ImGui::SliderScalar("LOD Level", ImGuiDataType_U8, &info->selectedLODLevel, &info->minLODIndex, &info->maxLODIndex);
 
-		if (ImGui::BeginCombo("##Bodypart", bodypartLabel, ImGuiComboFlags_NoArrowButton))
+		if (!meshParsedData->skins.empty())
 		{
-			for (size_t i = 0; i < parsedData->bodyParts.size(); i++)
-			{
-				const ModelBodyPart_t& bodypart = parsedData->bodyParts.at(i);
-
-				const bool isSelected = info->selectedBodypartIndex == i || (firstFrameForAsset && info->selectedBodypartIndex == info->lastSelectedBodypartIndex);
-
-				if (ImGui::Selectable(bodypart.GetNameCStr(), isSelected))
-				{
-					info->selectedBodypartIndex = i;
-					bodypartLabel = bodypart.GetNameCStr();
-				}
-
-				if (isSelected) ImGui::SetItemDefaultFocus();
-			}
-
-			ImGui::EndCombo();
-		}
-
-		// If the selected bodypart index is out of range, reset it to 0 to prevent an exception
-		if (info->selectedBodypartIndex >= parsedData->bodyParts.size())
-			info->selectedBodypartIndex = 0;
-
-		if (info->selectedSkinIndex >= parsedData->skins.size())
-			info->selectedSkinIndex = 0;
-
-		if (info->selectedLODLevel >= parsedData->lods.size())
-			info->selectedLODLevel = 0;
-
-		g_ExportSettings.previewedSkinIndex = static_cast<int>(info->selectedSkinIndex);
-
-		if (parsedData->bodyParts.at(info->selectedBodypartIndex).numModels > 1)
-		{
-			const ModelBodyPart_t& bodypart = parsedData->bodyParts.at(info->selectedBodypartIndex);
-			size_t& selectedModelIndex = info->bodygroupModelSelected.at(info->selectedBodypartIndex);
-
-			ImGui::TextUnformatted("Model:");
+			ImGui::TextUnformatted("Skins:");
 			ImGui::SameLine();
 
 			static const char* label = nullptr;
+			if (firstFrameForAsset)
+				label = STUDIO_DEFAULT_SKIN_NAME;
 
-			// update label if our bodypart changes
-			if (info->selectedBodypartIndex != info->lastSelectedBodypartIndex || firstFrameForAsset)
-				label = lodData.models.at(bodypart.modelIndex + selectedModelIndex).name.c_str();
-
-			if (ImGui::BeginCombo("##Model", label, ImGuiComboFlags_NoArrowButton))
+			if (ImGui::BeginCombo("##SKins", label, ImGuiComboFlags_NoArrowButton))
 			{
-				for (int i = 0; i < bodypart.numModels; i++)
+				for (size_t i = 0; i < meshParsedData->skins.size(); i++)
 				{
-					const bool isSelected = selectedModelIndex == i;
+					const ModelSkinData_t& skin = meshParsedData->skins.at(i);
+					const bool isSelected = info->selectedSkinIndex == i || (firstFrameForAsset && info->selectedSkinIndex == info->lastSelectedSkinIndex);
 
-					const char* tmp = lodData.models.at(bodypart.modelIndex + i).name.c_str();
-					if (ImGui::Selectable(tmp, isSelected))
+					if (ImGui::Selectable(skin.name, isSelected))
 					{
-						selectedModelIndex = static_cast<size_t>(i);
-						label = tmp;
+						info->selectedSkinIndex = i;
+						label = skin.name;
 					}
 
 					if (isSelected) ImGui::SetItemDefaultFocus();
@@ -2095,7 +2378,182 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 				ImGui::EndCombo();
 			}
 		}
+
+		if (!meshParsedData->bodyParts.empty())
+		{
+			ImGui::TextUnformatted("Bodypart:");
+			ImGui::SameLine();
+
+			static const char* bodypartLabel = nullptr;
+			if (firstFrameForAsset)
+				bodypartLabel = meshParsedData->bodyParts.at(0).GetNameCStr();
+
+			if (ImGui::BeginCombo("##Bodypart", bodypartLabel, ImGuiComboFlags_NoArrowButton))
+			{
+				for (size_t i = 0; i < meshParsedData->bodyParts.size(); i++)
+				{
+					const ModelBodyPart_t& bodypart = meshParsedData->bodyParts.at(i);
+					const bool isSelected = info->selectedBodypartIndex == i || (firstFrameForAsset && info->selectedBodypartIndex == info->lastSelectedBodypartIndex);
+
+					if (ImGui::Selectable(bodypart.GetNameCStr(), isSelected))
+					{
+						info->selectedBodypartIndex = i;
+						bodypartLabel = bodypart.GetNameCStr();
+					}
+
+					if (isSelected) ImGui::SetItemDefaultFocus();
+				}
+
+				ImGui::EndCombo();
+			}
+
+			if (info->selectedBodypartIndex >= meshParsedData->bodyParts.size())
+				info->selectedBodypartIndex = 0;
+
+			if (info->selectedSkinIndex >= meshParsedData->skins.size())
+				info->selectedSkinIndex = 0;
+
+			if (info->selectedLODLevel >= meshParsedData->lods.size())
+				info->selectedLODLevel = 0;
+
+			g_ExportSettings.previewedSkinIndex = static_cast<int>(info->selectedSkinIndex);
+
+			if (meshParsedData->bodyParts.at(info->selectedBodypartIndex).numModels > 1)
+			{
+				const ModelBodyPart_t& bodypart = meshParsedData->bodyParts.at(info->selectedBodypartIndex);
+				size_t& selectedModelIndex = info->bodygroupModelSelected.at(info->selectedBodypartIndex);
+
+				ImGui::TextUnformatted("Model:");
+				ImGui::SameLine();
+
+				static const char* label = nullptr;
+				if (info->selectedBodypartIndex != info->lastSelectedBodypartIndex || firstFrameForAsset)
+					label = lodData->models.at(bodypart.modelIndex + selectedModelIndex).name.c_str();
+
+				if (ImGui::BeginCombo("##Model", label, ImGuiComboFlags_NoArrowButton))
+				{
+					for (int i = 0; i < bodypart.numModels; i++)
+					{
+						const bool isSelected = selectedModelIndex == i;
+						const char* tmp = lodData->models.at(bodypart.modelIndex + i).name.c_str();
+						if (ImGui::Selectable(tmp, isSelected))
+						{
+							selectedModelIndex = static_cast<size_t>(i);
+							label = tmp;
+						}
+
+						if (isSelected) ImGui::SetItemDefaultFocus();
+					}
+
+					ImGui::EndCombo();
+				}
+			}
+		}
 	}
+
+	PreviewSequenceState_t sequenceState{};
+	const bool hasPreviewSequence = ResolvePreviewSequenceState(info, animParsedData, previewSequence, sequenceState);
+	if (hasPreviewSequence)
+	{
+		ImGui::Text("Sequence: %s", sequenceState.sequence->szlabel);
+		if (sequenceState.sequence->AnimCount() > 1)
+		{
+			info->selectedAnimationIndex = std::clamp(info->selectedAnimationIndex, 0, sequenceState.sequence->AnimCount() - 1);
+
+			const ModelAnim_t* const selectedAnim = sequenceState.sequence->Anim(info->selectedAnimationIndex);
+			const char* animLabel = selectedAnim ? selectedAnim->pszName() : nullptr;
+			if (!animLabel || !animLabel[0])
+				animLabel = "<unnamed>";
+
+			if (ImGui::BeginCombo("Anim", animLabel))
+			{
+				for (int animIndex = 0; animIndex < sequenceState.sequence->AnimCount(); ++animIndex)
+				{
+					const ModelAnim_t* const anim = sequenceState.sequence->Anim(animIndex);
+					const bool isSelected = (info->selectedAnimationIndex == animIndex);
+
+					std::string optionLabel;
+					const char* optionName = anim ? anim->pszName() : nullptr;
+					if (optionName && optionName[0])
+						optionLabel = std::format("{} [{}]", optionName, animIndex);
+					else
+						optionLabel = std::format("<unnamed> [{}]", animIndex);
+
+					if (ImGui::Selectable(optionLabel.c_str(), isSelected))
+					{
+						info->selectedAnimationIndex = animIndex;
+						info->previewTime = 0.0f;
+						info->previewFrame = 0;
+						sequenceState.animation = anim;
+					}
+
+					if (isSelected)
+						ImGui::SetItemDefaultFocus();
+				}
+
+				ImGui::EndCombo();
+			}
+		}
+
+		ImGui::Checkbox("Show Bones", &info->showBones);
+		ImGui::SameLine();
+		if (ImGui::Button(info->previewAnimationPlaying ? "Pause" : "Play"))
+			info->previewAnimationPlaying = !info->previewAnimationPlaying;
+		ImGui::SameLine();
+		ImGui::Checkbox("Loop", &info->previewAnimationLoop);
+
+		const float fps = std::max(sequenceState.animation->fps, 1.0f);
+		const float duration = std::max(sequenceState.animation->Duration(), 1.0f / fps);
+
+		if (info->previewAnimationPlaying)
+		{
+			info->previewTime += ImGui::GetIO().DeltaTime;
+			if (info->previewAnimationLoop)
+				info->previewTime = std::fmod(info->previewTime, duration);
+			else if (info->previewTime >= duration)
+			{
+				info->previewTime = duration;
+				info->previewAnimationPlaying = false;
+			}
+		}
+
+		const int maxFrame = std::max(sequenceState.animation->numframes - 1, 0);
+		info->previewFrame = std::clamp(static_cast<int>(std::round(info->previewTime * fps)), 0, maxFrame);
+		if (ImGui::SliderInt("Frame", &info->previewFrame, 0, maxFrame))
+			info->previewTime = info->previewFrame / fps;
+
+		if (ImGui::TreeNodeEx("Sequence Details", ImGuiTreeNodeFlags_SpanAvailWidth))
+		{
+			PreviewSeqDesc(sequenceState.sequence);
+			ImGui::TreePop();
+		}
+	}
+	else
+	{
+		ImGui::Checkbox("Show Bones", &info->showBones);
+		info->previewTime = 0.0f;
+		info->previewFrame = 0;
+	}
+
+	std::vector<PreviewBonePose_t> animPose;
+	if (animParsedData && !animParsedData->bones.empty())
+	{
+		animPose.resize(animParsedData->bones.size());
+		for (size_t i = 0; i < animParsedData->bones.size(); ++i)
+		{
+			animPose[i].pos = animParsedData->bones[i].pos;
+			animPose[i].quat = animParsedData->bones[i].quat;
+			animPose[i].scale = animParsedData->bones[i].scale;
+		}
+
+		if (hasPreviewSequence)
+			EvaluateAnimationPose(sequenceState.sequence, sequenceState.skeleton, sequenceState.animation, info->previewFrame, animPose);
+	}
+
+	if (info->showBones && !animPose.empty())
+		DrawPreviewBones(drawData, animParsedData, animPose);
+	else
+		ClearDebugPrimitives(drawData);
 
 	// Load these first so we don't have to look them up for every mesh.
 #if defined(ADVANCED_MODEL_PREVIEW)
@@ -2105,79 +2563,69 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 #endif
 	const CShader* const pixelShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("shaders/model_ps", s_PreviewPixelShader, eShaderType::Pixel);
 
-	const ModelSkinData_t& skinData = parsedData->skins.at(info->selectedSkinIndex);
-	for (size_t i = 0; i < lodData.meshes.size(); ++i)
+	if (hasMesh)
 	{
-		const ModelMeshData_t& mesh = lodData.meshes.at(i);
-		DXMeshDrawData_t* const meshDrawData = &drawData->meshBuffers[i];
+		const ModelSkinData_t* skinData = meshParsedData->skins.empty() ? nullptr : &meshParsedData->skins.at(info->selectedSkinIndex);
+		for (size_t i = 0; i < lodData->meshes.size(); ++i)
+		{
+			const ModelMeshData_t& mesh = lodData->meshes.at(i);
+			DXMeshDrawData_t* const meshDrawData = &drawData->meshBuffers[i];
 
-		meshDrawData->indexFormat = DXGI_FORMAT_R16_UINT; // uint16_t
-		meshDrawData->wireframe = false;
+			meshDrawData->indexFormat = DXGI_FORMAT_R16_UINT;
+			meshDrawData->wireframe = false;
+			drawData->meshBuffers[i].visible = meshParsedData->bodyParts[mesh.bodyPartIndex].IsPreviewEnabled();
 
-		// If this mesh belongs to a bodypart that is not selected, we should set it to be invisible
-		drawData->meshBuffers[i].visible = parsedData->bodyParts[mesh.bodyPartIndex].IsPreviewEnabled();
+			const ModelBodyPart_t& bodypart = meshParsedData->bodyParts[mesh.bodyPartIndex];
+			const ModelModelData_t& model = lodData->models.at(bodypart.modelIndex + info->bodygroupModelSelected.at(mesh.bodyPartIndex));
 
-		const ModelBodyPart_t& bodypart = parsedData->bodyParts[mesh.bodyPartIndex];
-		const ModelModelData_t& model = lodData.models.at(bodypart.modelIndex + info->bodygroupModelSelected.at(mesh.bodyPartIndex));
-		
-		if (i >= model.meshIndex && i < model.meshIndex + model.meshCount)
-			drawData->meshBuffers[i].visible = true;
-		else
-			drawData->meshBuffers[i].visible = false;
+			if (i >= model.meshIndex && i < model.meshIndex + model.meshCount)
+				drawData->meshBuffers[i].visible = true;
+			else
+				drawData->meshBuffers[i].visible = false;
 
-		// Placeholder shaders
-		meshDrawData->pixelShader = pixelShader->Get<ID3D11PixelShader>();
-		meshDrawData->vertexShader = vertexShader->Get<ID3D11VertexShader>();
-		meshDrawData->inputLayout = vertexShader->GetInputLayout();
-		meshDrawData->hasGameShaders = false;
+			meshDrawData->pixelShader = pixelShader->Get<ID3D11PixelShader>();
+			meshDrawData->vertexShader = vertexShader->Get<ID3D11VertexShader>();
+			meshDrawData->inputLayout = vertexShader->GetInputLayout();
+			meshDrawData->hasGameShaders = false;
 
-		// the rest of this loop requires the material to be valid
-		// so if it isn't just continue to the next iteration
-		CPakAsset* const matlAsset = parsedData->materials.at(skinData.indices[mesh.materialId]).asset;
-		if (!matlAsset)
-			continue;
+			if (!skinData)
+				continue;
 
-		const MaterialAsset* const matl = reinterpret_cast<MaterialAsset*>(matlAsset->extraData());
+			CPakAsset* const matlAsset = meshParsedData->materials.at(skinData->indices[mesh.materialId]).asset;
+			if (!matlAsset)
+				continue;
+
+			const MaterialAsset* const matl = reinterpret_cast<MaterialAsset*>(matlAsset->extraData());
 
 #if defined(ADVANCED_MODEL_PREVIEW)
-		// If the material has a valid shaderset loaded, try and grab its shaders to use for this mesh's advanced model preview
-		if (matl->shaderSetAsset)
-		{
-			ShaderSetAsset* const shaderSet = reinterpret_cast<ShaderSetAsset*>(matl->shaderSetAsset->extraData());
-
-			if (shaderSet->vertexShaderAsset && shaderSet->pixelShaderAsset)
+			if (matl->shaderSetAsset)
 			{
-				//ShaderAsset* const shadersetVS = reinterpret_cast<ShaderAsset*>(shaderSet->vertexShaderAsset->extraData());
-				ShaderAsset* const shadersetPS = reinterpret_cast<ShaderAsset*>(shaderSet->pixelShaderAsset->extraData());
-
-				//meshDrawData->vertexShader = vertexShader->vertexShader;
-				meshDrawData->pixelShader = shadersetPS->pixelShader;
-
-				//meshDrawData->inputLayout = vertexShader->vertexInputLayout;
-
-				meshDrawData->hasGameShaders = true;
+				ShaderSetAsset* const shaderSet = reinterpret_cast<ShaderSetAsset*>(matl->shaderSetAsset->extraData());
+				if (shaderSet->vertexShaderAsset && shaderSet->pixelShaderAsset)
+				{
+					ShaderAsset* const shadersetPS = reinterpret_cast<ShaderAsset*>(shaderSet->pixelShaderAsset->extraData());
+					meshDrawData->pixelShader = shadersetPS->pixelShader;
+					meshDrawData->hasGameShaders = true;
+				}
 			}
-		}
 #endif
 
-		if ((meshDrawData->textures.size() == 0 || info->lastSelectedSkinIndex != info->selectedSkinIndex) && matl)
-		{
-			meshDrawData->textures.clear();
-			for (auto& texEntry : matl->txtrAssets)
+			if ((meshDrawData->textures.size() == 0 || info->lastSelectedSkinIndex != info->selectedSkinIndex) && matl)
 			{
-				if (texEntry.asset)
+				meshDrawData->textures.clear();
+				for (auto& texEntry : matl->txtrAssets)
 				{
-					TextureAsset* txtr = reinterpret_cast<TextureAsset*>(texEntry.asset->extraData());
-
-					for (auto& mip : txtr->mipArray | std::views::reverse)
+					if (texEntry.asset)
 					{
-						// Find the highest mip in the texture's mip array that is loaded
-						if (mip.isLoaded)
+						TextureAsset* txtr = reinterpret_cast<TextureAsset*>(texEntry.asset->extraData());
+						for (auto& mip : txtr->mipArray | std::views::reverse)
 						{
-							const std::shared_ptr<CTexture> highestTextureMip = CreateTextureFromMip(texEntry.asset, &mip, s_PakToDxgiFormat[txtr->imgFormat]);
-							meshDrawData->textures.push_back({ texEntry.index, highestTextureMip });
-
-							break;
+							if (mip.isLoaded)
+							{
+								const std::shared_ptr<CTexture> highestTextureMip = CreateTextureFromMip(texEntry.asset, &mip, s_PakToDxgiFormat[txtr->imgFormat]);
+								meshDrawData->textures.push_back({ texEntry.index, highestTextureMip });
+								break;
+							}
 						}
 					}
 				}
@@ -2186,9 +2634,33 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	}
 
 #if defined(HAS_BONED_MODELS)
-	// Map some (potentially incorrect) bone data
-	if (!drawData->boneMatrixBuffer)
-		InitModelBoneMatrix(drawData, parsedData);
+	if (hasMesh && !drawData->boneMatrixBuffer)
+		InitModelBoneMatrix(drawData, meshParsedData);
+
+	if (hasMesh && drawData->boneMatrixBuffer)
+	{
+		std::vector<PreviewBonePose_t> meshPose(meshParsedData->bones.size());
+		for (size_t i = 0; i < meshParsedData->bones.size(); ++i)
+		{
+			meshPose[i].pos = meshParsedData->bones[i].pos;
+			meshPose[i].quat = meshParsedData->bones[i].quat;
+			meshPose[i].scale = meshParsedData->bones[i].scale;
+		}
+
+		if (!animPose.empty())
+		{
+			std::vector<int> remap;
+			BuildBoneNameRemap(remap, meshParsedData->bones, animParsedData->bones);
+			for (size_t i = 0; i < meshPose.size(); ++i)
+			{
+				const int animBone = remap[i];
+				if (animBone >= 0)
+					meshPose[i] = animPose[animBone];
+			}
+		}
+
+		UpdatePreviewSkinnedMeshes(drawData, meshParsedData, meshPose);
+	}
 #endif
 
 	Preview_MapTransformsBuffer(drawData);
