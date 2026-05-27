@@ -225,9 +225,9 @@ void Preview_Model(CDXDrawData* drawData, float dt)
 
             if (wheel != 0.0f)
             {
-                const float scrollZoomFactor = ImGui::GetIO().KeyAlt ? (1.f / 5.f) : 2.f;
+                const float scrollZoomFactor = ImGui::GetIO().KeyAlt ? (1.f / 5.f) : std::powf(camera->distanceToPivot, 0.6f);
                 camera->distanceToPivot -= (wheel * scrollZoomFactor);
-                camera->distanceToPivot = std::clamp(camera->distanceToPivot, 5.f, 300.f);
+                camera->distanceToPivot = std::clamp(camera->distanceToPivot, 5.f, 1000.f);
             }
         }
 
