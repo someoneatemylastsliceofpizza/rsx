@@ -316,6 +316,9 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         modelOptions.push_back({ candidate->GetAssetGUID(), candidate->GetAssetName() });
     }
 
+    if (firstFrameForAsset && previewInfo.selectedModelGuid == 0ull && !modelOptions.empty())
+        previewInfo.selectedModelGuid = modelOptions.front().guid;
+
     auto resolveSelectedModel = [&]() -> ModelAsset*
     {
         if (!previewInfo.selectedModelGuid)

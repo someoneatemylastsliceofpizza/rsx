@@ -1589,6 +1589,9 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         rigOptions.push_back({ guid, rigAsset->GetAssetName() });
     }
 
+    if (firstFrameForAsset && previewInfo.selectedRigGuid == 0ull && !rigOptions.empty())
+        previewInfo.selectedRigGuid = rigOptions.front().guid;
+
     auto resolveSelectedRig = [&]() -> AnimRigAsset*
     {
         if (!previewInfo.selectedRigGuid)
