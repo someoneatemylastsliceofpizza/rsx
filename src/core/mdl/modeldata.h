@@ -916,6 +916,8 @@ struct ModelPreviewInfo_t
 	bool previewAnimationPlaying = true;
 	bool previewAnimationLoop = true;
 	bool showBones = false;
+	bool showAttachments = false;
+	bool attachCameraToCameraAttachment = false;
 };
 
 void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const meshParsedData, const ModelParsedData_t* const animParsedData, const ModelSeq_t* const previewSequence, char* const assetName, const uint64_t assetGUID, const uint64_t meshAssetGUID, const bool firstFrameForAsset);

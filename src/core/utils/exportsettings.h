@@ -130,4 +130,16 @@ struct PreviewSettings_t
     float previewCameraOriginX;
     float previewCameraOriginY;
     float previewCameraOriginZ;
+    float previewFovDegrees;
+
+    bool previewUseAttachedCamera;
+    float previewAttachedCameraOriginX;
+    float previewAttachedCameraOriginY;
+    float previewAttachedCameraOriginZ;
+    float previewAttachedCameraTargetX;
+    float previewAttachedCameraTargetY;
+    float previewAttachedCameraTargetZ;
+    float previewAttachedCameraUpX;
+    float previewAttachedCameraUpY;
+    float previewAttachedCameraUpZ;
 };

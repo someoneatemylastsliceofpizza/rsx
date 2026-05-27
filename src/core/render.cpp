@@ -31,7 +31,27 @@ extern CDXParentHandler* g_dxHandler;
 extern std::atomic<uint32_t> g_maxConcurrentThreadCount;
 extern ExportSettings_t g_ExportSettings;
 
-PreviewSettings_t g_PreviewSettings { .previewCullDistance = PREVIEW_CULL_DEFAULT, .previewMovementSpeed = PREVIEW_SPEED_DEFAULT, .previewPivotX = 0.0f, .previewPivotY = 0.0f, .previewPivotZ = 0.0f };
+PreviewSettings_t g_PreviewSettings {
+    .previewCullDistance = PREVIEW_CULL_DEFAULT,
+    .previewMovementSpeed = PREVIEW_SPEED_DEFAULT,
+    .previewPivotX = 0.0f,
+    .previewPivotY = 0.0f,
+    .previewPivotZ = 0.0f,
+    .previewCameraOriginX = 0.0f,
+    .previewCameraOriginY = 0.0f,
+    .previewCameraOriginZ = 0.0f,
+    .previewFovDegrees = 45.0f,
+    .previewUseAttachedCamera = false,
+    .previewAttachedCameraOriginX = 0.0f,
+    .previewAttachedCameraOriginY = 0.0f,
+    .previewAttachedCameraOriginZ = 0.0f,
+    .previewAttachedCameraTargetX = 0.0f,
+    .previewAttachedCameraTargetY = 0.0f,
+    .previewAttachedCameraTargetZ = 0.0f,
+    .previewAttachedCameraUpX = 0.0f,
+    .previewAttachedCameraUpY = 1.0f,
+    .previewAttachedCameraUpZ = 0.0f,
+};
 
 CPreviewDrawData g_currentPreviewDrawData;
 

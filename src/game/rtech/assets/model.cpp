@@ -1567,10 +1567,9 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.previewAnimationPlaying = true;
         previewInfo.previewAnimationLoop = true;
         previewInfo.showBones = false;
+        previewInfo.showAttachments = false;
+        previewInfo.attachCameraToCameraAttachment = false;
     }
-
-    ImGui::Text("Rigs: %i", modelAsset->numAnimRigs);
-    ImGui::Text("Sequences: %i", modelAsset->numAnimSeqs);
 
     struct PreviewOption_t
     {

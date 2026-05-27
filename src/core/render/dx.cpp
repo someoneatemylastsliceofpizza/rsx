@@ -388,6 +388,30 @@ void CDXCamera::AddRotation(float yaw, float pitch, float roll)
 XMMATRIX CDXCamera::GetViewMatrix()
 {
     extern PreviewSettings_t g_PreviewSettings;
+    if (g_PreviewSettings.previewUseAttachedCamera)
+    {
+        const XMVECTOR cameraPos = XMVectorSet(
+            g_PreviewSettings.previewAttachedCameraOriginX,
+            g_PreviewSettings.previewAttachedCameraOriginY,
+            g_PreviewSettings.previewAttachedCameraOriginZ,
+            0.0f
+        );
+        const XMVECTOR focusPos = XMVectorSet(
+            g_PreviewSettings.previewAttachedCameraTargetX,
+            g_PreviewSettings.previewAttachedCameraTargetY,
+            g_PreviewSettings.previewAttachedCameraTargetZ,
+            0.0f
+        );
+        const XMVECTOR upDir = XMVector3Normalize(XMVectorSet(
+            g_PreviewSettings.previewAttachedCameraUpX,
+            g_PreviewSettings.previewAttachedCameraUpY,
+            g_PreviewSettings.previewAttachedCameraUpZ,
+            0.0f
+        ));
+
+        return XMMatrixLookAtLH(cameraPos, focusPos, upDir);
+    }
+
     XMVECTOR focusPos = XMVectorSet(g_PreviewSettings.previewPivotX, g_PreviewSettings.previewPivotY, g_PreviewSettings.previewPivotZ, 0.0f);
     XMVECTOR cameraPos = XMVectorSet(
         focusPos.m128_f32[0] + distanceToPivot * cosf(rotation.x) * sinf(rotation.y) + g_PreviewSettings.previewCameraOriginX,
@@ -747,7 +771,7 @@ bool CDXParentHandler::CreateViewForSceneWindow(const uint16_t w, const uint16_t
 
 void CDXParentHandler::UpdateProjectionMatrix()
 {
-    m_projectionMatrix = XMMatrixPerspectiveFovLH(0.25f * XM_PI, static_cast<float>(renderWidth) / renderHeight, 0.1f, g_PreviewSettings.previewCullDistance);
+    m_projectionMatrix = XMMatrixPerspectiveFovLH(DEG2RAD(g_PreviewSettings.previewFovDegrees), static_cast<float>(renderWidth) / renderHeight, 0.1f, g_PreviewSettings.previewCullDistance);
 }
 
 bool CDXParentHandler::CreateDepthBuffer(ID3D11Texture2D* const frameBuffer, ID3D11Texture2D** depthBuffer, ID3D11DepthStencilView** depthStencilView)

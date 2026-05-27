@@ -1,4 +1,4 @@
-#include <pch.h>
+﻿#include <pch.h>
 #include <core/mdl/modeldata.h>
 
 #include <core/mdl/rmax.h>
@@ -1838,6 +1838,8 @@ void CalcMatrixForBone_Unparented(const ModelBone_t& bone, XMMATRIX& matOut)
 //
 // PREVIEWDATA
 //
+extern PreviewSettings_t g_PreviewSettings;
+
 namespace
 {
 	struct PreviewBonePose_t
@@ -1852,6 +1854,12 @@ namespace
 		const ModelSeq_t* sequence = nullptr;
 		const ModelAnim_t* animation = nullptr;
 		const ModelParsedData_t* skeleton = nullptr;
+	};
+
+	struct PreviewAttachmentWorld_t
+	{
+		const ModelAttachment_t* attachment = nullptr;
+		matrix3x4_t worldMatrix{};
 	};
 
 	void CalcMatrixForBone_Unparented(const PreviewBonePose_t& pose, XMMATRIX& matOut)
@@ -1924,6 +1932,39 @@ namespace
 		return { sourcePosition.x, sourcePosition.z, sourcePosition.y };
 	}
 
+	Vector ConvertDirectionToPreviewSpace(const Vector& sourceDirection)
+	{
+		return { sourceDirection.x, sourceDirection.z, sourceDirection.y };
+	}
+
+	Vector GetPreviewCameraPosition()
+	{
+		const XMMATRIX invView = XMMatrixInverse(nullptr, g_dxHandler->GetCamera()->GetViewMatrix());
+		return {
+			invView.r[3].m128_f32[0],
+			invView.r[3].m128_f32[1],
+			invView.r[3].m128_f32[2]
+		};
+	}
+
+	bool ShouldCullPreviewDebugLine(const Vector& start, const Vector& end)
+	{
+		constexpr float kCullDistance = 1.5f;
+		const float cullDistanceSqr = kCullDistance * kCullDistance;
+
+		const Vector cameraPos = GetPreviewCameraPosition();
+		const Vector segment = end - start;
+		const float segmentLengthSqr = Vector::Dot(segment, segment);
+
+		float t = 0.0f;
+		if (segmentLengthSqr > FLT_EPSILON)
+			t = std::clamp(Vector::Dot(cameraPos - start, segment) / segmentLengthSqr, 0.0f, 1.0f);
+
+		const Vector closestPoint = start + (segment * t);
+		const Vector cameraToSegment = closestPoint - cameraPos;
+		return Vector::Dot(cameraToSegment, cameraToSegment) < cullDistanceSqr;
+	}
+
 	XMMATRIX GetPreviewBasisMatrix()
 	{
 		return XMMATRIX(
@@ -1983,6 +2024,105 @@ namespace
 				worldMatrices[i] = concatenated;
 			}
 		}
+	}
+
+	void BuildAttachmentWorldTransforms(const ModelParsedData_t* const parsedData, const std::vector<matrix3x4_t>& boneWorldMatrices, std::vector<PreviewAttachmentWorld_t>& outAttachments)
+	{
+		outAttachments.clear();
+		if (!parsedData || parsedData->attachments.empty())
+			return;
+
+		outAttachments.reserve(parsedData->attachments.size());
+		for (const ModelAttachment_t& attachment : parsedData->attachments)
+		{
+			if (!attachment.localmatrix || attachment.localbone < 0 || static_cast<size_t>(attachment.localbone) >= boneWorldMatrices.size())
+				continue;
+
+			PreviewAttachmentWorld_t worldAttachment{};
+			worldAttachment.attachment = &attachment;
+			ConcatTransforms(boneWorldMatrices[attachment.localbone], *attachment.localmatrix, worldAttachment.worldMatrix);
+			outAttachments.push_back(worldAttachment);
+		}
+	}
+
+	const PreviewAttachmentWorld_t* FindPreviewAttachmentByName(const std::vector<PreviewAttachmentWorld_t>& attachments, const char* const name)
+	{
+		if (!name || !name[0])
+			return nullptr;
+
+		for (const PreviewAttachmentWorld_t& attachment : attachments)
+		{
+			if (attachment.attachment && attachment.attachment->name && !strcmp(attachment.attachment->name, name))
+				return &attachment;
+		}
+
+		return nullptr;
+	}
+
+	void DrawPreviewAttachments(CDXDrawData* const drawData, const std::vector<PreviewAttachmentWorld_t>& attachments)
+	{
+		for (const PreviewAttachmentWorld_t& attachment : attachments)
+		{
+			if (!attachment.attachment)
+				continue;
+
+			Vector origin{};
+			MatrixPosition(attachment.worldMatrix, origin);
+
+			const Vector sourceX = TransformPointByMatrix(attachment.worldMatrix, { 2.0f, 0.0f, 0.0f });
+			const Vector sourceY = TransformPointByMatrix(attachment.worldMatrix, { 0.0f, 2.0f, 0.0f });
+			const Vector sourceZ = TransformPointByMatrix(attachment.worldMatrix, { 0.0f, 0.0f, 2.0f });
+
+			const Vector previewOrigin = ConvertPositionToPreviewSpace(origin);
+			const Vector previewX = ConvertPositionToPreviewSpace(sourceX);
+			const Vector previewY = ConvertPositionToPreviewSpace(sourceY);
+			const Vector previewZ = ConvertPositionToPreviewSpace(sourceZ);
+
+			if (!ShouldCullPreviewDebugLine(previewOrigin, previewX))
+				drawData->DrawLine(previewOrigin, previewX, 0xFFFF8000, false, 1.0f, -1.0f);
+			if (!ShouldCullPreviewDebugLine(previewOrigin, previewY))
+				drawData->DrawLine(previewOrigin, previewY, 0xFFFF8000, false, 1.0f, -1.0f);
+			if (!ShouldCullPreviewDebugLine(previewOrigin, previewZ))
+				drawData->DrawLine(previewOrigin, previewZ, 0xFFFF8000, false, 1.0f, -1.0f);
+		}
+	}
+
+	void DisableAttachedPreviewCamera()
+	{
+		g_PreviewSettings.previewUseAttachedCamera = false;
+		g_PreviewSettings.previewFovDegrees = 45.0f;
+		g_dxHandler->UpdateProjectionMatrix();
+	}
+
+	void ApplyPreviewCameraAttachment(const PreviewAttachmentWorld_t& attachment)
+	{
+		Vector origin{};
+		MatrixPosition(attachment.worldMatrix, origin);
+
+		const Vector sourceForwardPoint = TransformPointByMatrix(attachment.worldMatrix, { 8.0f, 0.0f, 0.0f });
+		const Vector sourceUpPoint = TransformPointByMatrix(attachment.worldMatrix, { 0.0f, 0.0f, 8.0f });
+
+		const Vector previewOrigin = ConvertPositionToPreviewSpace(origin);
+		const Vector previewTarget = ConvertPositionToPreviewSpace(sourceForwardPoint);
+		Vector previewUp = ConvertDirectionToPreviewSpace(sourceUpPoint - origin);
+		const float previewUpLengthSqr = Vector::Dot(previewUp, previewUp);
+		if (previewUpLengthSqr <= FLT_EPSILON)
+			previewUp = { 0.0f, 1.0f, 0.0f };
+		else
+			previewUp /= std::sqrt(previewUpLengthSqr);
+
+		g_PreviewSettings.previewUseAttachedCamera = true;
+		g_PreviewSettings.previewFovDegrees = 110.0f;
+		g_PreviewSettings.previewAttachedCameraOriginX = previewOrigin.x;
+		g_PreviewSettings.previewAttachedCameraOriginY = previewOrigin.y;
+		g_PreviewSettings.previewAttachedCameraOriginZ = previewOrigin.z;
+		g_PreviewSettings.previewAttachedCameraTargetX = previewTarget.x;
+		g_PreviewSettings.previewAttachedCameraTargetY = previewTarget.y;
+		g_PreviewSettings.previewAttachedCameraTargetZ = previewTarget.z;
+		g_PreviewSettings.previewAttachedCameraUpX = previewUp.x;
+		g_PreviewSettings.previewAttachedCameraUpY = previewUp.y;
+		g_PreviewSettings.previewAttachedCameraUpZ = previewUp.z;
+		g_dxHandler->UpdateProjectionMatrix();
 	}
 
 	bool EvaluateAnimationPose(const ModelSeq_t* const seqdesc, const ModelParsedData_t* const skeleton, const ModelAnim_t* const animdesc, const int frameIndex, std::vector<PreviewBonePose_t>& outPose)
@@ -2171,8 +2311,6 @@ namespace
 
 	void DrawPreviewBones(CDXDrawData* const drawData, const ModelParsedData_t* const skeleton, const std::vector<PreviewBonePose_t>& localPose)
 	{
-		ClearDebugPrimitives(drawData);
-
 		if (!skeleton || skeleton->bones.empty())
 			return;
 
@@ -2193,7 +2331,8 @@ namespace
 			child = ConvertPositionToPreviewSpace(child);
 			parentVec = ConvertPositionToPreviewSpace(parentVec);
 
-			drawData->DrawLine(child, parentVec, 0xFF00C8FF, false, 1.0f, -1.0f);
+			if (!ShouldCullPreviewDebugLine(child, parentVec))
+				drawData->DrawLine(child, parentVec, 0xFF00C8FF, false, 1.0f, -1.0f);
 		}
 	}
 
@@ -2303,6 +2442,22 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	const bool hasMesh = meshParsedData && !meshParsedData->lods.empty();
 	const uint64_t resolvedMeshGuid = hasMesh ? meshAssetGUID : assetGUID;
 	const uint8_t activeLOD = hasMesh ? info->selectedLODLevel : 0u;
+	const bool meshChanged = (info->activeMeshGuid != resolvedMeshGuid);
+
+	if (meshChanged)
+	{
+		info->activeMeshGuid = resolvedMeshGuid;
+		info->selectedBodypartIndex = 0u;
+		info->lastSelectedBodypartIndex = 0u;
+		info->selectedSkinIndex = 0u;
+		info->lastSelectedSkinIndex = 0u;
+		info->selectedLODLevel = 0u;
+
+		if (hasMesh)
+			info->bodygroupModelSelected.assign(meshParsedData->bodyParts.size(), 0ull);
+		else
+			info->bodygroupModelSelected.clear();
+	}
 
 	// [rika]: set up CDXDrawData
 	g_currentPreviewDrawData.CheckForMonitorChange();
@@ -2336,15 +2491,11 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	drawData->pixelShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("shaders/model_ps", s_PreviewPixelShader, eShaderType::Pixel);
 
 	const ModelLODData_t* lodData = hasMesh ? &meshParsedData->lods.at(info->selectedLODLevel) : nullptr;
-
-	if (animParsedData)
-	{
-		ImGui::Text("Bones: %llu", animParsedData->bones.size());
-		ImGui::Text("Local Sequences: %i", animParsedData->NumLocalSeq());
-	}
-
+	
 	if (hasMesh)
 	{
+		ImGui::SeparatorText("Model");
+
 		ImGui::Text("LODs: %llu", meshParsedData->lods.size());
 
 		if (info->minLODIndex != info->maxLODIndex)
@@ -2355,11 +2506,9 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 			ImGui::TextUnformatted("Skins:");
 			ImGui::SameLine();
 
-			static const char* label = nullptr;
-			if (firstFrameForAsset)
-				label = STUDIO_DEFAULT_SKIN_NAME;
+			const char* skinLabel = meshParsedData->skins.at(info->selectedSkinIndex).name;
 
-			if (ImGui::BeginCombo("##SKins", label, ImGuiComboFlags_NoArrowButton))
+			if (ImGui::BeginCombo("##SKins", skinLabel, ImGuiComboFlags_NoArrowButton))
 			{
 				for (size_t i = 0; i < meshParsedData->skins.size(); i++)
 				{
@@ -2367,10 +2516,7 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 					const bool isSelected = info->selectedSkinIndex == i || (firstFrameForAsset && info->selectedSkinIndex == info->lastSelectedSkinIndex);
 
 					if (ImGui::Selectable(skin.name, isSelected))
-					{
 						info->selectedSkinIndex = i;
-						label = skin.name;
-					}
 
 					if (isSelected) ImGui::SetItemDefaultFocus();
 				}
@@ -2384,9 +2530,7 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 			ImGui::TextUnformatted("Bodypart:");
 			ImGui::SameLine();
 
-			static const char* bodypartLabel = nullptr;
-			if (firstFrameForAsset)
-				bodypartLabel = meshParsedData->bodyParts.at(0).GetNameCStr();
+			const char* bodypartLabel = meshParsedData->bodyParts.at(info->selectedBodypartIndex).GetNameCStr();
 
 			if (ImGui::BeginCombo("##Bodypart", bodypartLabel, ImGuiComboFlags_NoArrowButton))
 			{
@@ -2396,10 +2540,7 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 					const bool isSelected = info->selectedBodypartIndex == i || (firstFrameForAsset && info->selectedBodypartIndex == info->lastSelectedBodypartIndex);
 
 					if (ImGui::Selectable(bodypart.GetNameCStr(), isSelected))
-					{
 						info->selectedBodypartIndex = i;
-						bodypartLabel = bodypart.GetNameCStr();
-					}
 
 					if (isSelected) ImGui::SetItemDefaultFocus();
 				}
@@ -2426,21 +2567,16 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 				ImGui::TextUnformatted("Model:");
 				ImGui::SameLine();
 
-				static const char* label = nullptr;
-				if (info->selectedBodypartIndex != info->lastSelectedBodypartIndex || firstFrameForAsset)
-					label = lodData->models.at(bodypart.modelIndex + selectedModelIndex).name.c_str();
+				const char* modelLabel = lodData->models.at(bodypart.modelIndex + selectedModelIndex).name.c_str();
 
-				if (ImGui::BeginCombo("##Model", label, ImGuiComboFlags_NoArrowButton))
+				if (ImGui::BeginCombo("##Model", modelLabel, ImGuiComboFlags_NoArrowButton))
 				{
 					for (int i = 0; i < bodypart.numModels; i++)
 					{
 						const bool isSelected = selectedModelIndex == i;
 						const char* tmp = lodData->models.at(bodypart.modelIndex + i).name.c_str();
 						if (ImGui::Selectable(tmp, isSelected))
-						{
 							selectedModelIndex = static_cast<size_t>(i);
-							label = tmp;
-						}
 
 						if (isSelected) ImGui::SetItemDefaultFocus();
 					}
@@ -2453,57 +2589,55 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 
 	PreviewSequenceState_t sequenceState{};
 	const bool hasPreviewSequence = ResolvePreviewSequenceState(info, animParsedData, previewSequence, sequenceState);
+	const bool hasCameraAttachment = meshParsedData && std::ranges::any_of(meshParsedData->attachments, [](const ModelAttachment_t& attachment)
+	{
+		return attachment.name && (!strcmp(attachment.name, "CAMERA") || !strcmp(attachment.name, "VDU"));
+	});
+
+	if (hasPreviewSequence) {
+		ImGui::SeparatorText("Animation");
+	}
+
+	if (hasPreviewSequence && sequenceState.sequence->AnimCount() > 1)
+	{
+		info->selectedAnimationIndex = std::clamp(
+			info->selectedAnimationIndex, 0, sequenceState.sequence->AnimCount() - 1);
+
+		const ModelAnim_t* const selectedAnim = sequenceState.sequence->Anim(info->selectedAnimationIndex);
+		const char* animLabel = (selectedAnim && selectedAnim->pszName() && selectedAnim->pszName()[0])
+			? selectedAnim->pszName() : "<unnamed>";
+
+		ImGui::SetNextItemWidth(-1.0f);
+		if (ImGui::BeginCombo("##Anim", animLabel))
+		{
+			for (int i = 0; i < sequenceState.sequence->AnimCount(); ++i)
+			{
+				const ModelAnim_t* const anim = sequenceState.sequence->Anim(i);
+				const char* name = (anim && anim->pszName() && anim->pszName()[0]) ? anim->pszName() : nullptr;
+				const std::string label = name
+					? std::format("{} [{}]", name, i)
+					: std::format("<unnamed> [{}]", i);
+
+				if (ImGui::Selectable(label.c_str(), info->selectedAnimationIndex == i))
+				{
+					info->selectedAnimationIndex = i;
+					info->previewTime = 0.0f;
+					info->previewFrame = 0;
+					sequenceState.animation = anim;
+				}
+				if (info->selectedAnimationIndex == i)
+					ImGui::SetItemDefaultFocus();
+			}
+			ImGui::EndCombo();
+		}
+	}
+
+	// Playback
 	if (hasPreviewSequence)
 	{
-		ImGui::Text("Sequence: %s", sequenceState.sequence->szlabel);
-		if (sequenceState.sequence->AnimCount() > 1)
-		{
-			info->selectedAnimationIndex = std::clamp(info->selectedAnimationIndex, 0, sequenceState.sequence->AnimCount() - 1);
-
-			const ModelAnim_t* const selectedAnim = sequenceState.sequence->Anim(info->selectedAnimationIndex);
-			const char* animLabel = selectedAnim ? selectedAnim->pszName() : nullptr;
-			if (!animLabel || !animLabel[0])
-				animLabel = "<unnamed>";
-
-			if (ImGui::BeginCombo("Anim", animLabel))
-			{
-				for (int animIndex = 0; animIndex < sequenceState.sequence->AnimCount(); ++animIndex)
-				{
-					const ModelAnim_t* const anim = sequenceState.sequence->Anim(animIndex);
-					const bool isSelected = (info->selectedAnimationIndex == animIndex);
-
-					std::string optionLabel;
-					const char* optionName = anim ? anim->pszName() : nullptr;
-					if (optionName && optionName[0])
-						optionLabel = std::format("{} [{}]", optionName, animIndex);
-					else
-						optionLabel = std::format("<unnamed> [{}]", animIndex);
-
-					if (ImGui::Selectable(optionLabel.c_str(), isSelected))
-					{
-						info->selectedAnimationIndex = animIndex;
-						info->previewTime = 0.0f;
-						info->previewFrame = 0;
-						sequenceState.animation = anim;
-					}
-
-					if (isSelected)
-						ImGui::SetItemDefaultFocus();
-				}
-
-				ImGui::EndCombo();
-			}
-		}
-
-		ImGui::Checkbox("Show Bones", &info->showBones);
-		ImGui::SameLine();
-		if (ImGui::Button(info->previewAnimationPlaying ? "Pause" : "Play"))
-			info->previewAnimationPlaying = !info->previewAnimationPlaying;
-		ImGui::SameLine();
-		ImGui::Checkbox("Loop", &info->previewAnimationLoop);
-
 		const float fps = std::max(sequenceState.animation->fps, 1.0f);
 		const float duration = std::max(sequenceState.animation->Duration(), 1.0f / fps);
+		const int   maxFrame = std::max(sequenceState.animation->numframes - 1, 0);
 
 		if (info->previewAnimationPlaying)
 		{
@@ -2516,23 +2650,51 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 				info->previewAnimationPlaying = false;
 			}
 		}
-
-		const int maxFrame = std::max(sequenceState.animation->numframes - 1, 0);
 		info->previewFrame = std::clamp(static_cast<int>(std::round(info->previewTime * fps)), 0, maxFrame);
-		if (ImGui::SliderInt("Frame", &info->previewFrame, 0, maxFrame))
+
+		if (ImGui::Button(info->previewAnimationPlaying ? " | | " : "  >  "))
+			info->previewAnimationPlaying = !info->previewAnimationPlaying;
+
+		ImGui::SameLine();
+		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Loop").x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x * 2.0f - ImGui::GetStyle().ItemInnerSpacing.x);
+		if (ImGui::SliderInt("##Frame", &info->previewFrame, 0, maxFrame, maxFrame > 0 ? "Frame %d" : "Frame 0"))
 			info->previewTime = info->previewFrame / fps;
 
+		ImGui::SameLine();
+		ImGui::Checkbox("Loop", &info->previewAnimationLoop);
+	}
+	else
+	{
+		info->previewTime = 0.0f;
+		info->previewFrame = 0;
+	}
+
+
+	ImGui::SeparatorText("Misc");
+
+	if (!hasCameraAttachment) ImGui::BeginDisabled();
+	if (ImGui::Button(info->attachCameraToCameraAttachment ? "Detach Camera" : "Attach Camera"))
+		info->attachCameraToCameraAttachment = !info->attachCameraToCameraAttachment;
+
+	if (!hasCameraAttachment)
+	{
+		ImGui::EndDisabled();
+		info->attachCameraToCameraAttachment = false;
+	}
+
+	ImGui::SameLine();
+	ImGui::Checkbox("Bones", &info->showBones);
+	ImGui::SameLine();
+	ImGui::Checkbox("Attachments", &info->showAttachments);
+
+	if (hasPreviewSequence)
+	{
+		ImGui::Spacing();
 		if (ImGui::TreeNodeEx("Sequence Details", ImGuiTreeNodeFlags_SpanAvailWidth))
 		{
 			PreviewSeqDesc(sequenceState.sequence);
 			ImGui::TreePop();
 		}
-	}
-	else
-	{
-		ImGui::Checkbox("Show Bones", &info->showBones);
-		info->previewTime = 0.0f;
-		info->previewFrame = 0;
 	}
 
 	std::vector<PreviewBonePose_t> animPose;
@@ -2550,10 +2712,55 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 			EvaluateAnimationPose(sequenceState.sequence, sequenceState.skeleton, sequenceState.animation, info->previewFrame, animPose);
 	}
 
+	std::vector<PreviewBonePose_t> meshPose;
+	std::vector<matrix3x4_t> meshWorldMatrices;
+	std::vector<PreviewAttachmentWorld_t> previewAttachments;
+	if (meshParsedData && hasMesh)
+	{
+		meshPose.resize(meshParsedData->bones.size());
+		for (size_t i = 0; i < meshParsedData->bones.size(); ++i)
+		{
+			meshPose[i].pos = meshParsedData->bones[i].pos;
+			meshPose[i].quat = meshParsedData->bones[i].quat;
+			meshPose[i].scale = meshParsedData->bones[i].scale;
+		}
+
+		if (!animPose.empty())
+		{
+			std::vector<int> remap;
+			BuildBoneNameRemap(remap, meshParsedData->bones, animParsedData->bones);
+			for (size_t i = 0; i < meshPose.size(); ++i)
+			{
+				const int animBone = remap[i];
+				if (animBone >= 0)
+					meshPose[i] = animPose[animBone];
+			}
+		}
+
+		BuildWorldBoneMatrices(meshParsedData->bones, meshPose, meshWorldMatrices);
+		BuildAttachmentWorldTransforms(meshParsedData, meshWorldMatrices, previewAttachments);
+	}
+
+	ClearDebugPrimitives(drawData);
 	if (info->showBones && !animPose.empty())
 		DrawPreviewBones(drawData, animParsedData, animPose);
+	if (info->showAttachments && !previewAttachments.empty())
+		DrawPreviewAttachments(drawData, previewAttachments);
+
+	if (info->attachCameraToCameraAttachment)
+	{
+		if (const PreviewAttachmentWorld_t* const cameraAttachment = FindPreviewAttachmentByName(previewAttachments, "CAMERA"))
+			ApplyPreviewCameraAttachment(*cameraAttachment);
+		else if (const PreviewAttachmentWorld_t* const vduAttachment = FindPreviewAttachmentByName(previewAttachments, "VDU"))
+			ApplyPreviewCameraAttachment(*vduAttachment);
+		else
+		{
+			info->attachCameraToCameraAttachment = false;
+			DisableAttachedPreviewCamera();
+		}
+	}
 	else
-		ClearDebugPrimitives(drawData);
+		DisableAttachedPreviewCamera();
 
 	// Load these first so we don't have to look them up for every mesh.
 #if defined(ADVANCED_MODEL_PREVIEW)
@@ -2639,23 +2846,14 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 
 	if (hasMesh && drawData->boneMatrixBuffer)
 	{
-		std::vector<PreviewBonePose_t> meshPose(meshParsedData->bones.size());
-		for (size_t i = 0; i < meshParsedData->bones.size(); ++i)
+		if (meshPose.empty())
 		{
-			meshPose[i].pos = meshParsedData->bones[i].pos;
-			meshPose[i].quat = meshParsedData->bones[i].quat;
-			meshPose[i].scale = meshParsedData->bones[i].scale;
-		}
-
-		if (!animPose.empty())
-		{
-			std::vector<int> remap;
-			BuildBoneNameRemap(remap, meshParsedData->bones, animParsedData->bones);
-			for (size_t i = 0; i < meshPose.size(); ++i)
+			meshPose.resize(meshParsedData->bones.size());
+			for (size_t i = 0; i < meshParsedData->bones.size(); ++i)
 			{
-				const int animBone = remap[i];
-				if (animBone >= 0)
-					meshPose[i] = animPose[animBone];
+				meshPose[i].pos = meshParsedData->bones[i].pos;
+				meshPose[i].quat = meshParsedData->bones[i].quat;
+				meshPose[i].scale = meshParsedData->bones[i].scale;
 			}
 		}
 

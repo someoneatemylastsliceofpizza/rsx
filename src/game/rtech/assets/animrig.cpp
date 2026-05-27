@@ -286,9 +286,9 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.previewAnimationPlaying = true;
         previewInfo.previewAnimationLoop = true;
         previewInfo.showBones = false;
+        previewInfo.showAttachments = false;
+        previewInfo.attachCameraToCameraAttachment = false;
     }
-
-    ImGui::Text("Sequences: %i", rigAsset->numAnimSeqs);
 
     struct PreviewOption_t
     {
@@ -339,7 +339,6 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         if (ImGui::Selectable("<none>", noModelSelected))
         {
             previewInfo.selectedModelGuid = 0ull;
-            previewInfo.activeMeshGuid = 0ull;
             previewInfo.bodygroupModelSelected.clear();
             previewInfo.selectedAnimationIndex = 0;
         }
@@ -352,7 +351,6 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
             if (ImGui::Selectable(option.label.c_str(), isSelected))
             {
                 previewInfo.selectedModelGuid = option.guid;
-                previewInfo.activeMeshGuid = option.guid;
                 previewInfo.bodygroupModelSelected.clear();
                 previewInfo.selectedAnimationIndex = 0;
                 previewInfo.previewTime = 0.0f;

@@ -68,7 +68,8 @@ void Preview_Model(CDXDrawData* drawData, float dt)
 
         ctx->VSSetConstantBuffers(0u, 1u, &drawData->transformsBuffer); // VS_TransformConstants/CBufModelInstance
 
-        scene.previewGrid.Draw(ctx);
+        if (!g_PreviewSettings.previewUseAttachedCamera)
+            scene.previewGrid.Draw(ctx);
 
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -259,7 +260,7 @@ void Preview_Model(CDXDrawData* drawData, float dt)
                 XMVECTOR camRight = invView.r[0];
                 XMVECTOR camUp = invView.r[1];
 
-                const float fovY = 0.25f * XM_PI;
+                const float fovY = DEG2RAD(g_PreviewSettings.previewFovDegrees);
                 const float worldHeight = 2.0f * camera->distanceToPivot * tanf(fovY * 0.5f);
                 const float factor = (avail.y > 0.0f) ? (worldHeight / avail.y) : 0.0f;
 
