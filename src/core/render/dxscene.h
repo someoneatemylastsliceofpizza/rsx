@@ -8,7 +8,7 @@
 class CDXScene
 {
 public:
-	CDXScene() = default;
+	CDXScene() : anchorGrid({ 0.f, 0.f, -500.f }, { 0.f, 0.f, 90.f }) { }
 
 	// Global Lights are used in Pixel Shaders as a StructuredBuffer<HardwareLight> resource in register t62.
 	// The data must be bound using a shader resource view.
@@ -19,6 +19,7 @@ public:
 	ID3D11ShaderResourceView* cubemapSamplesSRV;
 
 	PreviewGrid_t<6, 2> previewGrid;
+	PreviewGrid_t<6, 100> anchorGrid;
 
 	std::vector<HardwareLight> globalLights;
 	std::vector<float> cubemapSamples;

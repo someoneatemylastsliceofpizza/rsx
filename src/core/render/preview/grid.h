@@ -1,6 +1,7 @@
-#pragma once
+﻿#pragma once
 
 #include <core/render/dxshader.h>
+#include <core/math/vector.h>
 
 struct GridVertex_t
 {
@@ -34,6 +35,38 @@ struct PreviewGrid_t
 			numVertsWritten += 2;
 		}
 	};
+
+	PreviewGrid_t(const Vector& origin, const QAngle& angle) : numVertices(4 * (N + 1))
+	{
+		constexpr float    minCoord = (-(N / 2)) * SZ;
+		constexpr float    maxCoord = ((N / 2)) * SZ;
+		constexpr uint16_t horizontalVertsStart = 2 * (N + 1);
+
+		const float cp = cosf(angle.x * s_DEG2RAD_CONST), sp = sinf(angle.x * s_DEG2RAD_CONST);
+		const float cy = cosf(angle.y * s_DEG2RAD_CONST), sy = sinf(angle.y * s_DEG2RAD_CONST);
+		const float cr = cosf(angle.z * s_DEG2RAD_CONST), sr = sinf(angle.z * s_DEG2RAD_CONST);
+
+		auto MakeVertex = [&](float vx, float vy, float vz) -> GridVertex_t
+			{
+				constexpr uint32_t lineColour = 0x919191FF;
+				const float rx = cp * cy * vx + (sr * sp * cy - cr * sy) * vy + (cr * sp * cy + sr * sy) * vz;
+				const float ry = cp * sy * vx + (sr * sp * sy + cr * cy) * vy + (cr * sp * sy - sr * cy) * vz;
+				const float rz = -sp * vx + sr * cp * vy + cr * cp * vz;
+				return { origin.x + rx, origin.y + ry, origin.z + rz, lineColour };
+			};
+
+		uint16_t numVertsWritten = 0;
+		for (float i = minCoord; i <= maxCoord; i += SZ)
+		{
+			vertices[numVertsWritten] = MakeVertex(i, 0.0f, maxCoord);
+			vertices[numVertsWritten + 1] = MakeVertex(i, 0.0f, minCoord);
+
+			vertices[numVertsWritten + horizontalVertsStart] = MakeVertex(minCoord, 0.0f, i);
+			vertices[numVertsWritten + horizontalVertsStart + 1] = MakeVertex(maxCoord, 0.0f, i);
+
+			numVertsWritten += 2;
+		}
+	}
 
 	GridVertex_t vertices[4*(N+1)];
 

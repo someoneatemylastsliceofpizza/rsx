@@ -831,11 +831,16 @@ bool CDXParentHandler::CreateMisc()
         return false;
 
     auto& grid = this->GetScene().previewGrid;
+    auto& anchorgrid = this->GetScene().anchorGrid;
 
     grid.CreateBuffers(m_pDevice);
+    anchorgrid.CreateBuffers(m_pDevice);
 
     grid.vertexShader = m_pShaderManager->LoadShaderFromString("preview/prim_vs", s_PrimitiveVertexShader, eShaderType::Vertex, s_PrimitiveInputLayout, std::size(s_PrimitiveInputLayout));
     grid.pixelShader = m_pShaderManager->LoadShaderFromString("preview/prim_ps", s_PrimitivePixelShader, eShaderType::Pixel);
+
+    anchorgrid.vertexShader = m_pShaderManager->LoadShaderFromString("preview/prim_vs", s_PrimitiveVertexShader, eShaderType::Vertex, s_PrimitiveInputLayout, std::size(s_PrimitiveInputLayout));
+    anchorgrid.pixelShader = m_pShaderManager->LoadShaderFromString("preview/prim_ps", s_PrimitivePixelShader, eShaderType::Pixel);
 
     // todo: use an actual cubemap
     //DirectX::TexMetadata meta;

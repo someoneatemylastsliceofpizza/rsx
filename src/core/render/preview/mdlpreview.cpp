@@ -70,6 +70,8 @@ void Preview_Model(CDXDrawData* drawData, float dt)
 
         if (!g_PreviewSettings.previewUseAttachedCamera)
             scene.previewGrid.Draw(ctx);
+        else
+            scene.anchorGrid.Draw(ctx);
 
         ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
