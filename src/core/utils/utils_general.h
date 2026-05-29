@@ -365,3 +365,30 @@ public:
     std::vector<TxtRange> filters;
     int grepCnt;
 };
+
+
+using namespace std::chrono;
+
+class CScopeTimer
+{
+public:
+    CScopeTimer(const char* const name)
+    {
+        m_name = name;
+        m_startTime = system_clock::now().time_since_epoch();
+    }
+
+    ~CScopeTimer()
+    {
+        system_clock::duration now = system_clock::now().time_since_epoch();
+        printf("%s: finished in %.3fms.\n", m_name, duration_cast<microseconds>(now - m_startTime).count() / 1000.f);
+    }
+
+private:
+    const char* m_name;
+    system_clock::duration m_startTime;
+};
+
+#define XTIME_SCOPE2(x, y) CScopeTimer __timer_##y(x)
+#define XTIME_SCOPE(x, y) XTIME_SCOPE2(x, y)
+#define TIME_SCOPE(x) XTIME_SCOPE(x, __COUNTER__)

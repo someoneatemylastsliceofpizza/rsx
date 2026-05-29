@@ -6,6 +6,7 @@
 #include <core/render/dx.h>
 #include <thirdparty/imgui/imgui.h>
 #include <thirdparty/imgui/misc/imgui_utility.h>
+#include <thirdparty/imgui/misc/imgui_memory_editor.h>
 
 extern ExportSettings_t g_ExportSettings;
 
@@ -19,19 +20,15 @@ void LoadUIAsset(CAssetContainer* const container, CAsset* const asset)
 
     switch (pakAsset->version())
     {
-    case 29:
-    case 30:
+    case 29: // r2
+    case 30: // |
+    case 39: // r5
+    case 40: // |
+    case 42: // |
     {
         UIAssetHeader_t* const hdr = reinterpret_cast<UIAssetHeader_t* const>(pakAsset->header());
         uiAsset = new UIAsset(hdr);
         break;
-    }
-    case 39:
-    case 40:
-    case 42:
-    {
-        // r5 currently unsupported
-        return;
     }
     default:
     {
@@ -55,11 +52,11 @@ struct UIPreviewData_t
 {
     enum eColumnID
     {
-        TPC_Index, // base should be -1
+        TPC_Offset,
+        TPC_Index,
         TPC_Type,
         TPC_Name,
         TPC_DefaultVal,
-        TPC_Offset,
 
         _TPC_COUNT,
     };
@@ -116,17 +113,35 @@ struct UICompare_t
     }
 };
 
+// ImU32: 0xAABBGGRR
+// Determine the background colour of the contents of the arg data hex editor
+ImU32 UIArgData_BGColorCallback(const ImU8* /*mem*/, size_t off, void* user_data)
+{
+    std::vector<UIPreviewData_t>* const previewData = reinterpret_cast<std::vector<UIPreviewData_t>*>(user_data);
+
+    for (auto& arg : *previewData)
+    {
+        if (arg.type == UI_ARG_TYPE_NONE)
+            continue;
+
+        if (arg.offset <= off && off < (arg.offset + s_typeSizes[arg.type]))
+            return s_typeColours[arg.type];
+    }
+
+    return 0x00000000;
+}
+
 void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
 {
     assertm(asset, "Asset should be valid.");
 
     CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
 
-    if (pakAsset->version() > 30)
-    {
-        ImGui::Text("This asset version is not currently supported for preview.");
-        return nullptr;
-    }
+    //if (pakAsset->version() > 30)
+    //{
+    //    ImGui::Text("This asset version is not currently supported for preview.");
+    //    return nullptr;
+    //}
 
     UIAsset* const uiAsset = reinterpret_cast<UIAsset*>(pakAsset->extraData());
 
@@ -151,7 +166,20 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
             argPreviewData.typeStr = s_UIArgTypeNames[argData->type];
             argPreviewData.offset = argData->dataOffset; // [rika]: dataOffset on 'none' type args is just 0
             argPreviewData.hash = argData->shortHash; // use if we have no name
+
+            if (argData->dataOffset < uiAsset->minArgDataOffset)
+                uiAsset->minArgDataOffset = argData->dataOffset;
         }
+    }
+
+    ImGui::Text("Num Arg Clusters: %u", uiAsset->argClusterCount);
+    ImGui::Text("Struct Size: %u", uiAsset->ruiDataStructSize);
+    ImGui::Text("Constant Values Size: %u", uiAsset->argDefaultValueSize);
+
+    if (uiAsset->argClusterCount == 1)
+    {
+        const UIAssetArgCluster_t* const ac = &uiAsset->argClusters[0];
+        ImGui::Text("Hash Constants: MUL (0x%X), ADD (0x%X)", ac->hashMul, ac->hashAdd);
     }
 
     constexpr ImGuiTableFlags tableFlags =
@@ -164,11 +192,11 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
 
     if (ImGui::BeginTable("Arg Table", UIPreviewData_t::eColumnID::_TPC_COUNT, tableFlags, outerSize))
     {
-        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.0f, UIPreviewData_t::eColumnID::TPC_Index);
+        ImGui::TableSetupColumn("Offset", ImGuiTableColumnFlags_DefaultSort | ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, UIPreviewData_t::eColumnID::TPC_Offset);
+        ImGui::TableSetupColumn("Index", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_DefaultHide, 0.0f, UIPreviewData_t::eColumnID::TPC_Index);
         ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, UIPreviewData_t::eColumnID::TPC_Type);
         ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, UIPreviewData_t::eColumnID::TPC_Name);
         ImGui::TableSetupColumn("Value", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, UIPreviewData_t::eColumnID::TPC_DefaultVal);
-        ImGui::TableSetupColumn("Offset", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, UIPreviewData_t::eColumnID::TPC_Offset);
         ImGui::TableSetupScrollFreeze(1, 1);
 
         ImGuiTableSortSpecs* sortSpecs = ImGui::TableGetSortSpecs(); // get the sorting settings from this table
@@ -185,27 +213,21 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
         {
             const UIPreviewData_t* item = &previewData.at(i);
 
-            //const bool isRowSelected = selectedFontCharacter == item || (firstFrameForAsset && item->index == lastSelectedTexture);
+            if (item->type == UIAssetArgType_t::UI_ARG_TYPE_NONE)
+                continue;
 
             ImGui::PushID(item->index); // id of this line ?
 
             ImGui::TableNextRow(ImGuiTableRowFlags_None, 0.0f);
+
+            if (ImGui::TableSetColumnIndex(UIPreviewData_t::eColumnID::TPC_Offset))
+                ImGui::Text("0x%X", item->offset);
 
             if (ImGui::TableSetColumnIndex(UIPreviewData_t::eColumnID::TPC_Index))
                 ImGui::Text("%i", item->index);
 
             if (ImGui::TableSetColumnIndex(UIPreviewData_t::eColumnID::TPC_Type))
                 ImGui::Text("%s", item->typeStr);
-
-            // [rika]: no valid data if none type, skip the rest
-            if (item->type == UIAssetArgType_t::UI_ARG_TYPE_NONE)
-            {
-                ImGui::PopID();
-                continue;
-            }
-
-            if(ImGui::TableSetColumnIndex(UIPreviewData_t::eColumnID::TPC_Offset))
-                ImGui::Text("0x%X", item->offset);
 
             if (ImGui::TableSetColumnIndex(UIPreviewData_t::eColumnID::TPC_Name))
             {
@@ -232,10 +254,17 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
                 }
                 case UIAssetArgType_t::UI_ARG_TYPE_ASSET:
                 case UIAssetArgType_t::UI_ARG_TYPE_IMAGE:
-                case UIAssetArgType_t::UI_ARG_TYPE_UIHANDLE:
                 {
                     ImGui::Text("$\"%s\"", *item->value.string);
 
+                    break;
+                }
+                case UIAssetArgType_t::UI_ARG_TYPE_UIHANDLE:
+                {
+                    if (pakAsset->version() > 30)
+                        ImGui::Text("$\"ui:%X\"", *item->value.integer);
+                    else
+                        ImGui::Text("$\"%s\"", *item->value.string);
                     break;
                 }
                 case UIAssetArgType_t::UI_ARG_TYPE_BOOL:
@@ -251,9 +280,13 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
                     break;
                 }
                 case UIAssetArgType_t::UI_ARG_TYPE_FLOAT:
-                case UIAssetArgType_t::UI_ARG_TYPE_GAMETIME: // no worky
+                case UIAssetArgType_t::UI_ARG_TYPE_GAMETIME:
                 {
-                    ImGui::Text("%f", *item->value.fpn);
+                    // this is a very common placeholder value that otherwise gets displayed as -1000000015047466219876677755040.000000
+                    if (*item->value.integer == 0xf149f2ca)
+                        ImGui::Text("-1e30");
+                    else
+                        ImGui::Text("%f", *item->value.fpn);
 
                     break;
                 }
@@ -287,8 +320,13 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
 
                     break;
                 }
+                case UIAssetArgType_t::UI_ARG_TYPE_FONT_HASH:
+                {
+                    ImGui::Text("%X", *item->value.integer);
+
+                    break;
+                }
                 // font face
-                // font hash
                 // array
                 default:
                 {
@@ -306,12 +344,28 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
         ImGui::EndTable();
     }
 
+    if (ImGui::BeginChild("Raw Data", ImVec2(0, 0), ImGuiChildFlags_Borders))
+    {
+        static MemoryEditor rawDataEdit;
+
+        rawDataEdit.ReadOnly = true;
+        rawDataEdit.OptShowDataPreview = true;
+        rawDataEdit.UserData = &previewData;
+        rawDataEdit.BgColorFn = UIArgData_BGColorCallback;
+
+        rawDataEdit.DrawContents(uiAsset->argDefaultValues, uiAsset->argDefaultValueSize);
+
+
+    }
+    ImGui::EndChild();
+
     return nullptr;
 }
 
 enum eUIExportSetting
 {
     TXT, // just the arguments in text form
+    RUI, // im making up formats now
 };
 
 static const char* const s_PathPrefixUI = s_AssetTypePaths.find(AssetType_t::UI)->second;
@@ -344,16 +398,25 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
     {
         std::stringstream rawtext;
 
+        for (int i = 0; i < uiAsset->argClusterCount; ++i)
+        {
+            UIAssetArgCluster_t* ac = &uiAsset->argClusters[i];
+            rawtext << std::format("// ArgCluster {} Hash Consts: {}/{}\n", i, ac->hashMul, ac->hashAdd);
+        }
+
         for (int i = 0; i < uiAsset->argCount; i++)
         {
             const UIAssetArg_t* const arg = &uiAsset->args[i];
+
+            if (arg->type == UIAssetArgType_t::UI_ARG_TYPE_NONE)
+                continue;
 
             if (uiAsset->argNames)
                 rawtext << (uiAsset->argNames + arg->nameOffset);
             else
                 rawtext << std::format("{:x}", arg->shortHash);
 
-            rawtext << ":\t";
+            rawtext << std::format(":{}\t", arg->nameOffset);
 
             UIAssetArgValue_t argValue = { .rawptr = (reinterpret_cast<char*>(uiAsset->argDefaultValues) + arg->dataOffset) };
 
@@ -367,15 +430,23 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
             }
             case UIAssetArgType_t::UI_ARG_TYPE_STRING:
             {
-                rawtext << std::format("\"{}\"", *argValue.string);
+                rawtext << std::format("\"{}\"", EscapeString(*argValue.string));
 
                 break;
             }
             case UIAssetArgType_t::UI_ARG_TYPE_ASSET:
             case UIAssetArgType_t::UI_ARG_TYPE_IMAGE:
-            case UIAssetArgType_t::UI_ARG_TYPE_UIHANDLE:
             {
                 rawtext << std::format("$\"{}\"", *argValue.string);
+
+                break;
+            }
+            case UIAssetArgType_t::UI_ARG_TYPE_UIHANDLE:
+            {
+                if (pakAsset->version() > 30)
+                    rawtext << std::format("$\"ui:{:X}\"", *argValue.integer);
+                else
+                    rawtext << std::format("$\"{}\"", *argValue.string);
 
                 break;
             }
@@ -450,6 +521,12 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
 
         return true;
     }
+    case eUIExportSetting::RUI:
+    {
+
+
+        return true;
+    }
     default:
         break;
     }
@@ -459,7 +536,7 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
 
 void InitUIAssetType()
 {
-    static const char* settings[] = { "TXT" };
+    static const char* settings[] = { "TXT", "RUI (WIP)" };
     AssetTypeBinding_t type =
     {
         .name = "RUI",

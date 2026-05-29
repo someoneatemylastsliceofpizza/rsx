@@ -597,49 +597,58 @@ bool ExportAudioSourceAsset(CAsset* const asset, const int setting)
 
 void* AudioSource_Preview(CAsset* const asset, const bool firstFrameForAsset)
 {
-	if (firstFrameForAsset)
-	{
-		CMilesAudioAsset* audioAsset = static_cast<CMilesAudioAsset*>(asset);
-		CMilesAudioBank* audioBank = asset->GetContainerFile<CMilesAudioBank>();
+	if (firstFrameForAsset && g_audioPlayer.IsInitialised())
+		g_audioPlayer.Shutdown();
 
-		const std::filesystem::path asrcPath(audioAsset->GetAssetName());
+	CMilesAudioAsset* audioAsset = static_cast<CMilesAudioAsset*>(asset);
+	MilesSource_t* source = reinterpret_cast<MilesSource_t*>(audioAsset->GetAssetData());
 
-		MilesSource_t* source = reinterpret_cast<MilesSource_t*>(audioAsset->GetAssetData());
-
-		// get the bank's path and replace the filename
-		// with the stream file name that we've just put together
-		std::filesystem::path streamPath(audioBank->GetFilePath());
-		streamPath.replace_filename(audioAsset->GetContainerFileName());
-
-		DecodedAudioMetadata_t metadata;
-		auto decodedDataOpt = DecodeAudioDataForSource(streamPath, source, &metadata);
-
-		if (!decodedDataOpt.has_value())
-		{
-			Log("Failed to decode audio source.\n");
-			return nullptr;
-		}
-
-		g_audioPlayer.Setup(decodedDataOpt.value(),
-			metadata.sampleCount, metadata.sampleRate, static_cast<uint8_t>(metadata.channelCount),
-			metadata.decodeFormat & DECODE_FORMAT_F32 ? sizeof(float) : sizeof(uint16_t));
-	}
 
 	const float progressTime = g_audioPlayer.GetCursorAsTime();
-	const float soundLengthTime = g_audioPlayer.GetSoundDurationAsTime();
-
+	const float soundLengthTime = source->duration();
 
 	const std::string progress = std::format("{:.3f}", progressTime);
 
-	if (!g_audioPlayer.IsAudioFinished())
+	if (g_audioPlayer.IsInitialised())
 	{
-		if (ImGui::Button(g_audioPlayer.IsPlaying() ? ICON_CI_DEBUG_PAUSE : ICON_CI_DEBUG_START))
-			g_audioPlayer.TogglePause();
+		if (!g_audioPlayer.IsAudioFinished())
+		{
+			if (ImGui::Button(g_audioPlayer.IsPlaying() ? ICON_CI_DEBUG_PAUSE : ICON_CI_DEBUG_START))
+				g_audioPlayer.TogglePause();
+		}
+		else
+		{
+			if (ImGui::Button(ICON_CI_DEBUG_RESTART))
+				g_audioPlayer.Restart();
+		}
 	}
 	else
 	{
-		if (ImGui::Button(ICON_CI_DEBUG_RESTART))
-			g_audioPlayer.Restart();
+		if (ImGui::Button(ICON_CI_DEBUG_START))
+		{
+			CMilesAudioBank* audioBank = asset->GetContainerFile<CMilesAudioBank>();
+
+			const std::filesystem::path asrcPath(audioAsset->GetAssetName());
+
+
+			// get the bank's path and replace the filename
+			// with the stream file name that we've just put together
+			std::filesystem::path streamPath(audioBank->GetFilePath());
+			streamPath.replace_filename(audioAsset->GetContainerFileName());
+
+			DecodedAudioMetadata_t metadata;
+			auto decodedDataOpt = DecodeAudioDataForSource(streamPath, source, &metadata);
+
+			if (!decodedDataOpt.has_value())
+			{
+				Log("Failed to decode audio source.\n");
+				return nullptr;
+			}
+
+			g_audioPlayer.Setup(decodedDataOpt.value(),
+				metadata.sampleCount, metadata.sampleRate, static_cast<uint8_t>(metadata.channelCount),
+				metadata.decodeFormat & DECODE_FORMAT_F32 ? sizeof(float) : sizeof(uint16_t));
+		}
 	}
 
 	ImGui::SameLine();
@@ -647,6 +656,11 @@ void* AudioSource_Preview(CAsset* const asset, const bool firstFrameForAsset)
 	ImGuiExt::ProgressBarCentered(progressTime / soundLengthTime, ImVec2(200.f, 25.f), progress.c_str(), nullptr);
 	ImGui::SameLine();
 	ImGui::Text("%.3f", soundLengthTime);
+
+	if(source->bpm != 0)
+		ImGui::Text("BPM: %u", source->bpm);
+
+	ImGui::Text("Sample Rate: %u", source->sampleRate);
 
 	return nullptr;
 }

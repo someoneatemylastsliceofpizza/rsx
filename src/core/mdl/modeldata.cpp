@@ -1046,7 +1046,8 @@ bool ExportModelRMAX(const ModelParsedData_t* const parsedData, std::filesystem:
 					const Vertex_t* const vertData = &parsedVertexData->GetVertices()[i];
 
 					Vector normal;
-					vertData->normalPacked.UnpackNormal(normal);
+					Vector tangent;
+					vertData->normalPacked.UnpackNormal(normal, tangent);
 
 					mesh->AddVertex(vertData->position, normal);
 
@@ -1297,8 +1298,10 @@ bool ExportModelCast(const ModelParsedData_t* const parsedData, std::filesystem:
 				{
 					const Vertex_t& vert = parsedVertexData->GetVertices()[vertIdx];
 
+					Vector tangent;
+
 					vertexData.positions[curIndex + vertIdx] = vert.position;
-					vert.normalPacked.UnpackNormal(vertexData.normals[curIndex + vertIdx]);
+					vert.normalPacked.UnpackNormal(vertexData.normals[curIndex + vertIdx], tangent);
 					vertexData.colors[curIndex + vertIdx] = vert.color;
 
 					for (uint16_t texcoordIdx = 0; texcoordIdx < meshData.texcoordCount; texcoordIdx++)
@@ -1353,8 +1356,9 @@ bool ExportModelCast(const ModelParsedData_t* const parsedData, std::filesystem:
 // parse a Vertex_t into a smd vertex
 inline void ParseVertexIntoSMD(const Vertex_t* const srcVert, const VertexWeight_t* const srcWeights, smd::Vertex* const vert, const bool isStaticProp, const uint32_t texcoordWidth = 1u, const Vector2D* const extraTexcoords = nullptr, const uint32_t vertexIndex = 0u)
 {
+	Vector tangent;
 	vert->position = srcVert->position;
-	srcVert->normalPacked.UnpackNormal(vert->normal);
+	srcVert->normalPacked.UnpackNormal(vert->normal, tangent);
 
 	if (isStaticProp)
 	{

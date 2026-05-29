@@ -344,12 +344,20 @@ namespace vg
 		uint32_t boneCount : 8;
 	};
 
+	// Templated to the number of bits for each complex bone index
 	struct BlendWeightIndices_s
 	{
 		uint8_t bone[3];	// when the model doesn't have extra bone weights all three are used for bone indices, otherwise in order they will be used for: first bone, last bone (assumes vvd->vg), unused.
 		uint8_t boneCount;	// number of bones this vertex is weighted to excluding the base weight (value of 0 if only one weight, max of 15 with 16 weights)
 	
 		const BlendWeightIndicesPacked_s* Packed() const { return reinterpret_cast<const BlendWeightIndicesPacked_s*>(this); };
+		
+		uint8_t operator[](int i)
+		{
+			assert(i >= 0 && i <= 2);
+
+			return reinterpret_cast<uint8_t*>(this)[i];
+		}
 	};
 
 	struct Vertex_t

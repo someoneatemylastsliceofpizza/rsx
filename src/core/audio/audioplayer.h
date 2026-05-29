@@ -13,6 +13,8 @@ public:
     {
     }
 
+    bool IsInitialised() const { return deviceInitialised; };
+
     // i cannot figure out how to do this properly using other miniaudio interfaces, so i'm going to leave it with the really bad
     // method of teardown + reinit of the device every time a new sound is played. i will come back to this eventually
     void Setup(const std::vector<char>& audioData, size_t numSamples, uint32_t sampleRate, uint8_t numChannels, uint8_t sampleSize)
@@ -73,8 +75,8 @@ public:
 
     bool IsPlaying() const { return isPlaying; }
     size_t GetCursor() const { return audioCursor; };
-    float GetCursorAsTime() const { return (audioCursor / _numChannels / (float)_sampleSize) / (float)_sampleRate; };
-    float GetSoundDurationAsTime() const { return _numSamples / (float)_sampleRate; };
+    float GetCursorAsTime() const { return !deviceInitialised ? 0 : (audioCursor / _numChannels / (float)_sampleSize) / (float)_sampleRate; };
+    float GetSoundDurationAsTime() const { return !deviceInitialised ? 0 : _numSamples / (float)_sampleRate; };
 
 private:
     static void MiniAudioDataCallback(ma_device* pDevice, void* pOutput, const void* pInput, ma_uint32 frameCount)

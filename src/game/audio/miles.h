@@ -99,7 +99,10 @@ struct MilesSource_v39_t
 	uint16_t sampleRate;
 	uint16_t bitRate;
 
-	char gap[16];
+	char gap[10];
+
+	uint16_t bpm;
+	char gap_20[4];
 
 	uint32_t streamHeaderSize;
 	uint32_t sampleCount;
@@ -120,7 +123,10 @@ struct MilesSource_v48_t
 	uint16_t sampleRate;
 	uint16_t bitRate;
 
-	char gap[16];
+	char gap[10];
+
+	uint16_t bpm;
+	char gap_20[4];
 
 	uint32_t streamHeaderSize;
 	uint64_t sampleCount;
@@ -134,25 +140,25 @@ static_assert(sizeof(MilesSource_v48_t) == 80);
 
 struct MilesSource_t
 {
-	MilesSource_t(const MilesSource_v39_t* const a) :
-		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
-		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
-		nameOffset(a->nameOffset),
-		languageIdx(a->languageIdx), patchIdx(a->patchIdx)
-	{};
-
 	MilesSource_t(const MilesSource_v28_t* const a) :
 		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
 		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
 		nameOffset(a->nameOffset),
-		languageIdx(a->languageIdx), patchIdx(a->patchIdx)
+		languageIdx(a->languageIdx), patchIdx(a->patchIdx), bpm(0), sampleRate(a->sampleRate)
+	{};
+
+	MilesSource_t(const MilesSource_v39_t* const a) :
+		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
+		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
+		nameOffset(a->nameOffset),
+		languageIdx(a->languageIdx), patchIdx(a->patchIdx), bpm(a->bpm), sampleRate(a->sampleRate)
 	{};
 
 	MilesSource_t(const MilesSource_v48_t* const a) :
 		streamDataOffset(a->streamDataOffset), streamHeaderOffset(a->streamHeaderOffset),
 		sampleCount(a->sampleCount), streamHeaderSize(a->streamHeaderSize),
 		nameOffset(a->nameOffset),
-		languageIdx(a->languageIdx), patchIdx(a->patchIdx)
+		languageIdx(a->languageIdx), patchIdx(a->patchIdx), bpm(a->bpm), sampleRate(a->sampleRate)
 	{};
 
 	uint64_t nameOffset;
@@ -163,6 +169,15 @@ struct MilesSource_t
 
 	uint16_t languageIdx;
 	uint16_t patchIdx;
+
+	uint16_t bpm;
+	uint16_t sampleRate;
+
+
+	float duration() const
+	{
+		return sampleCount / (float)sampleRate;
+	}
 };
 
 /*

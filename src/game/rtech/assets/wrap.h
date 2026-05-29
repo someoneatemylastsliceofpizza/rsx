@@ -4,10 +4,11 @@
 #define WRAP_FLAG_FILE_IS_PERMANENT		0x4   // Fourth bit seems to indicate that the asset is streamed.
 #define WRAP_FLAG_FILE_IS_STREAMED		0x10
 
-enum class eWrapAssetParsedDataType
+enum class WrapAssetType_e
 {
-	NONE = 0, // if there's no special parsed data
+	UNKNOWN = 0, // if there's no special parsed data
 	BSP,      // wrap asset is a base BSP file and contains a CBSPData pointer
+	TEXT,
 };
 
 struct WrapAssetHeader_v1_t
@@ -35,17 +36,25 @@ struct WrapAssetHeader_v7_t
 	uint8_t unk5[2];
 };
 
+const static std::unordered_map<std::string, WrapAssetType_e> s_wrapAssetExtensions = {
+	{".bsp", WrapAssetType_e::BSP},
+	{".txt", WrapAssetType_e::TEXT},
+	{".nut", WrapAssetType_e::TEXT},
+	{".gnut", WrapAssetType_e::TEXT},
+	{".res", WrapAssetType_e::TEXT},
+};
+
 class WrapAsset
 {
 public:
 	WrapAsset() = default;
 	WrapAsset(WrapAssetHeader_v1_t* const hdr) : path(nullptr), data(hdr->data), cmpSize(hdr->size), dcmpSize(hdr->size), pathSize(0u), skipFirstFolderPos(0u),
-		fileNamePos(0u), flags(0u), skipSize(0u), isCompressed(false), isStreamed(false), parsedData(nullptr), parsedDataType(eWrapAssetParsedDataType::NONE)
+		fileNamePos(0u), flags(0u), skipSize(0u), isCompressed(false), isStreamed(false), parsedData(nullptr), type(WrapAssetType_e::UNKNOWN)
 	{
 
 	}
 	WrapAsset(WrapAssetHeader_v7_t* const hdr) : path(hdr->path), data(hdr->data), cmpSize(hdr->cmpSize), dcmpSize(hdr->dcmpSize), pathSize(hdr->pathSize), skipFirstFolderPos(hdr->skipFirstFolderPos),
-		fileNamePos(hdr->fileNamePos), flags(hdr->flags), parsedData(nullptr), parsedDataType(eWrapAssetParsedDataType::NONE)
+		fileNamePos(hdr->fileNamePos), flags(hdr->flags), parsedData(nullptr), type(WrapAssetType_e::UNKNOWN)
 	{
 		// This assert has been placed here in case we find an asset who's compressed
 		// size == decompressed size, since I don't know if we need to decompress in
@@ -82,7 +91,7 @@ public:
 	bool isCompressed;
 	bool isStreamed;
 
-	eWrapAssetParsedDataType parsedDataType;
+	WrapAssetType_e type;
 
 	void* parsedData; // data class for something like 
 };

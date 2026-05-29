@@ -39,7 +39,7 @@ void LoadODLAsset(CAssetContainer* container, CAsset* asset)
 
     ODLAsset* odlAsset = new ODLAsset(header);
 
-    pakAsset->SetAssetName(header->assetName, true);
+    pakAsset->SetAssetName("odl_asset/" + std::string(header->assetName), true);
     pakAsset->setExtraData(odlAsset);
 }
 

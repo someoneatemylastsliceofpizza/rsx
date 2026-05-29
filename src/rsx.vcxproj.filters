@@ -474,6 +474,9 @@
     <ClInclude Include="core\filehandling\validation.h">
       <Filter>core\filehandling</Filter>
     </ClInclude>
+    <ClInclude Include="thirdparty\imgui\misc\imgui_memory_editor.h">
+      <Filter>thirdparty\imgui\misc</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="pch.cpp">
