@@ -1,5 +1,8 @@
-﻿#include <pch.h>
+#include <pch.h>
 #include <core/mdl/modeldata.h>
+#include <sstream>
+#include <game/asset.h>
+#include <game/rtech/assets/animseq.h>
 
 #include <core/mdl/rmax.h>
 #include <core/mdl/cast.h>
@@ -1846,12 +1849,6 @@ extern PreviewSettings_t g_PreviewSettings;
 
 namespace
 {
-	struct PreviewBonePose_t
-	{
-		Vector pos{};
-		Quaternion quat{};
-		Vector scale{ 1.0f, 1.0f, 1.0f };
-	};
 
 	struct PreviewSequenceState_t
 	{
@@ -1865,6 +1862,124 @@ namespace
 		const ModelAttachment_t* attachment = nullptr;
 		matrix3x4_t worldMatrix{};
 	};
+
+	std::string GetLowerStem(const std::string& pathStr)
+	{
+		std::filesystem::path p(pathStr);
+		std::string stem = p.stem().string();
+		for (char& c : stem)
+			c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+		return stem;
+	}
+
+	void DispatchBodygroupEvent(ModelPreviewInfo_t* const info, const ModelEvent_t& ev, ModelParsedData_t* const meshParsedData, bool enable)
+	{
+		if (!meshParsedData)
+			return;
+
+		std::string options = ParseBodygroupEventOptions(ev.options);
+		if (options.empty())
+			return;
+
+		std::string partName = options;
+		int value = enable ? 1 : 0;
+
+		size_t spacePos = options.find_first_of(" \t");
+		if (spacePos != std::string::npos)
+		{
+			partName = options.substr(0, spacePos);
+			std::string valStr = options.substr(spacePos + 1);
+			valStr.erase(0, valStr.find_first_not_of(" \t"));
+			if (!valStr.empty() && std::isdigit(static_cast<unsigned char>(valStr[0])))
+			{
+				value = std::stoi(valStr);
+			}
+		}
+
+		for (size_t i = 0; i < meshParsedData->bodyParts.size(); ++i)
+		{
+			auto& bodypart = meshParsedData->bodyParts[i];
+			if (bodypart.partName == partName)
+			{
+				bodypart.previewEnabled = enable;
+				if (info && i < info->bodygroupModelSelected.size())
+				{
+					int numModels = bodypart.numModels;
+					if (value >= 0 && value < numModels)
+					{
+						info->bodygroupModelSelected[i] = value;
+					}
+					else if (!enable)
+					{
+						info->bodygroupModelSelected[i] = 0;
+					}
+				}
+				break;
+			}
+		}
+	}
+
+	void DispatchCreatePropEvent(ModelPreviewInfo_t* const info, const ModelEvent_t& ev)
+	{
+		ParsedCreatePropEvent_t parsed = ParseCreatePropOptions(ev.options);
+		if (!parsed.valid)
+			return;
+
+		for (const auto& existing : info->spawnedProps)
+		{
+			if (existing.attachmentName == parsed.attachment && existing.seqPath == parsed.seqPath)
+				return;
+		}
+
+		std::string targetModelStem = GetLowerStem(parsed.modelPath);
+		std::string targetSeqStem = GetLowerStem(parsed.seqPath);
+
+		CPakAsset* modelAsset = nullptr;
+		CPakAsset* seqAsset = nullptr;
+
+		for (auto& lookup : g_assetData.v_assets)
+		{
+			CAsset* const candidateAsset = lookup.m_asset;
+			if (!candidateAsset || candidateAsset->GetAssetContainerType() != CAsset::ContainerType::PAK)
+				continue;
+
+			CPakAsset* const candidate = static_cast<CPakAsset*>(candidateAsset);
+			if (!candidate->hasExtraData())
+				continue;
+
+			if (candidate->GetAssetType() == '_ldm')
+			{
+				if (!candidate->GetAssetName().empty() && GetLowerStem(candidate->GetAssetName()) == targetModelStem)
+					modelAsset = candidate;
+			}
+			else if (candidate->GetAssetType() == 'qesa')
+			{
+				if (!candidate->GetAssetName().empty() && GetLowerStem(candidate->GetAssetName()) == targetSeqStem)
+					seqAsset = candidate;
+			}
+
+			if (modelAsset && seqAsset)
+				break;
+		}
+
+		if (!modelAsset || !seqAsset)
+			return;
+
+		AnimSeqAsset* const seqData = seqAsset->extraData<AnimSeqAsset*>();
+		if (!seqData || !seqData->animationParsed)
+			return;
+
+		PropEntity_t prop{};
+		prop.modelGuid = modelAsset->GetAssetGUID();
+		prop.modelPath = modelAsset->GetAssetName();
+		prop.seqGuid = seqAsset->GetAssetGUID();
+		prop.attachmentName = parsed.attachment;
+		prop.seqPath = parsed.seqPath;
+		prop.spawnCycle = ev.cycle;
+		prop.looping = (seqData->seqdesc.flags & STUDIO_LOOPING) != 0;
+
+		info->spawnedProps.push_back(std::move(prop));
+	}
 
 	void CalcMatrixForBone_Unparented(const PreviewBonePose_t& pose, XMMATRIX& matOut)
 	{
@@ -2233,7 +2348,7 @@ namespace
 		ctx->Unmap(drawData->boneMatrixBuffer, 0);
 	}
 
-	void UpdatePreviewSkinnedMeshes(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData, const std::vector<PreviewBonePose_t>& localPose)
+	void UpdatePreviewSkinnedMeshes_LOD(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData, const std::vector<PreviewBonePose_t>& localPose, uint8_t lodLevel)
 	{
 		if (!drawData || !parsedData)
 			return;
@@ -2245,9 +2360,9 @@ namespace
 		std::vector<matrix3x4_t> worldMatrices;
 		BuildWorldBoneMatrices(parsedData->bones, localPose, worldMatrices);
 
-		for (size_t meshIndex = 0; meshIndex < parsedData->lods.at(g_currentPreviewDrawData.activeLODLevel).meshes.size(); ++meshIndex)
+		for (size_t meshIndex = 0; meshIndex < parsedData->lods.at(lodLevel).meshes.size(); ++meshIndex)
 		{
-			const ModelMeshData_t& mesh = parsedData->lods.at(g_currentPreviewDrawData.activeLODLevel).meshes.at(meshIndex);
+			const ModelMeshData_t& mesh = parsedData->lods.at(lodLevel).meshes.at(meshIndex);
 			DXMeshDrawData_t* const meshDrawData = &drawData->meshBuffers[meshIndex];
 			if (!meshDrawData->vertexBuffer || mesh.meshVertexDataIndex == invalidNoodleIdx)
 				continue;
@@ -2313,6 +2428,71 @@ namespace
 		}
 	}
 
+	void UpdatePreviewSkinnedMeshes(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData, const std::vector<PreviewBonePose_t>& localPose)
+	{
+		UpdatePreviewSkinnedMeshes_LOD(drawData, parsedData, localPose, g_currentPreviewDrawData.activeLODLevel);
+	}
+
+	void AdvanceAndUploadPose(
+		CDXDrawData* const drawData,
+		ModelParsedData_t* const parsedData,
+		const ModelParsedData_t* const animParsedData,
+		const ModelSeq_t* const seq,
+		const ModelAnim_t* const anim,
+		const int frame,
+		const uint8_t lodLevel,
+		std::vector<PreviewBonePose_t>& outAnimPose,
+		std::vector<PreviewBonePose_t>& outMeshPose
+	)
+	{
+		if (animParsedData && !animParsedData->bones.empty())
+		{
+			outAnimPose.resize(animParsedData->bones.size());
+			for (size_t i = 0; i < animParsedData->bones.size(); ++i)
+			{
+				outAnimPose[i].pos = animParsedData->bones[i].pos;
+				outAnimPose[i].quat = animParsedData->bones[i].quat;
+				outAnimPose[i].scale = animParsedData->bones[i].scale;
+			}
+
+			if (seq && anim)
+				EvaluateAnimationPose(seq, animParsedData, anim, frame, outAnimPose);
+		}
+
+		if (parsedData)
+		{
+			outMeshPose.resize(parsedData->bones.size());
+			for (size_t i = 0; i < parsedData->bones.size(); ++i)
+			{
+				outMeshPose[i].pos = parsedData->bones[i].pos;
+				outMeshPose[i].quat = parsedData->bones[i].quat;
+				outMeshPose[i].scale = parsedData->bones[i].scale;
+			}
+
+			if (!outAnimPose.empty())
+			{
+				std::vector<int> remap;
+				BuildBoneNameRemap(remap, parsedData->bones, animParsedData->bones);
+				for (size_t i = 0; i < outMeshPose.size(); ++i)
+				{
+					const int animBone = remap[i];
+					if (animBone >= 0)
+						outMeshPose[i] = outAnimPose[animBone];
+				}
+			}
+
+#if defined(HAS_BONED_MODELS)
+			if (!drawData->boneMatrixBuffer)
+				InitModelBoneMatrix(drawData, parsedData);
+
+			if (drawData->boneMatrixBuffer)
+			{
+				UpdatePreviewSkinnedMeshes_LOD(drawData, parsedData, outMeshPose, lodLevel);
+			}
+#endif
+		}
+	}
+
 	void DrawPreviewBones(CDXDrawData* const drawData, const ModelParsedData_t* const skeleton, const std::vector<PreviewBonePose_t>& localPose)
 	{
 		if (!skeleton || skeleton->bones.empty())
@@ -2337,6 +2517,73 @@ namespace
 
 			if (!ShouldCullPreviewDebugLine(child, parentVec))
 				drawData->DrawLine(child, parentVec, 0xFF00C8FF, false, 1.0f, -1.0f);
+		}
+	}
+
+	void DrawPreviewBonesWithRootTransform(CDXDrawData* const drawData, const ModelParsedData_t* const skeleton, const std::vector<PreviewBonePose_t>& localPose, const matrix3x4_t& rootMatrix)
+	{
+		if (!skeleton || skeleton->bones.empty())
+			return;
+
+		std::vector<matrix3x4_t> worldMatrices;
+		BuildWorldBoneMatrices(skeleton->bones, localPose, worldMatrices);
+
+		for (size_t i = 0; i < skeleton->bones.size(); ++i)
+		{
+			const int parent = skeleton->bones[i].parent;
+			if (parent < 0)
+				continue;
+
+			Vector child{};
+			Vector parentVec{};
+			MatrixPosition(worldMatrices[i], child);
+			MatrixPosition(worldMatrices[parent], parentVec);
+
+			child = TransformPointByMatrix(rootMatrix, child);
+			parentVec = TransformPointByMatrix(rootMatrix, parentVec);
+
+			child = ConvertPositionToPreviewSpace(child);
+			parentVec = ConvertPositionToPreviewSpace(parentVec);
+
+			if (!ShouldCullPreviewDebugLine(child, parentVec))
+				drawData->DrawLine(child, parentVec, 0xFF00C8FF, false, 1.0f, -1.0f);
+		}
+	}
+
+	void DrawPreviewAttachmentsWithRootTransform(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData, const std::vector<matrix3x4_t>& boneWorldMatrices, const matrix3x4_t& rootMatrix)
+	{
+		if (!parsedData || parsedData->attachments.empty())
+			return;
+
+		for (const ModelAttachment_t& attachment : parsedData->attachments)
+		{
+			if (!attachment.localmatrix || attachment.localbone < 0 || static_cast<size_t>(attachment.localbone) >= boneWorldMatrices.size())
+				continue;
+
+			matrix3x4_t localWorldMatrix{};
+			ConcatTransforms(boneWorldMatrices[attachment.localbone], *attachment.localmatrix, localWorldMatrix);
+
+			matrix3x4_t propWorldMatrix{};
+			ConcatTransforms(rootMatrix, localWorldMatrix, propWorldMatrix);
+
+			Vector origin{};
+			MatrixPosition(propWorldMatrix, origin);
+
+			const Vector sourceX = TransformPointByMatrix(propWorldMatrix, { 2.0f, 0.0f, 0.0f });
+			const Vector sourceY = TransformPointByMatrix(propWorldMatrix, { 0.0f, 2.0f, 0.0f });
+			const Vector sourceZ = TransformPointByMatrix(propWorldMatrix, { 0.0f, 0.0f, 2.0f });
+
+			const Vector previewOrigin = ConvertPositionToPreviewSpace(origin);
+			const Vector previewX = ConvertPositionToPreviewSpace(sourceX);
+			const Vector previewY = ConvertPositionToPreviewSpace(sourceY);
+			const Vector previewZ = ConvertPositionToPreviewSpace(sourceZ);
+
+			if (!ShouldCullPreviewDebugLine(previewOrigin, previewX))
+				drawData->DrawLine(previewOrigin, previewX, 0xFFFF8000, false, 1.0f, -1.0f);
+			if (!ShouldCullPreviewDebugLine(previewOrigin, previewY))
+				drawData->DrawLine(previewOrigin, previewY, 0xFFFF8000, false, 1.0f, -1.0f);
+			if (!ShouldCullPreviewDebugLine(previewOrigin, previewZ))
+				drawData->DrawLine(previewOrigin, previewZ, 0xFFFF8000, false, 1.0f, -1.0f);
 		}
 	}
 
@@ -2393,7 +2640,7 @@ void CalculateBonesInverseBindMatrix(ModelParsedData_t* const parsedData)
 	}
 }
 
-void InitModelBoneMatrix(CDXDrawData* const drawData, ModelParsedData_t* const parsedData)
+void InitModelBoneMatrix(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData)
 {
 	ID3D11Device* const device = g_dxHandler->GetDevice();
 
@@ -2436,11 +2683,51 @@ void InitModelBoneMatrix(CDXDrawData* const drawData, ModelParsedData_t* const p
 		return;
 #endif
 
-	CalculateBonesInverseBindMatrix(parsedData);
+	CalculateBonesInverseBindMatrix(const_cast<ModelParsedData_t*>(parsedData));
 
 	// Initial update for the bone matrices
 	UpdateModelBoneMatrix(drawData, parsedData);
 }
+
+void ModelPreviewInfo_t::ClearSpawnedProps()
+{
+	for (auto& prop : spawnedProps)
+	{
+		if (prop.drawData)
+		{
+			delete prop.drawData;
+			prop.drawData = nullptr;
+		}
+	}
+	spawnedProps.clear();
+}
+
+ParsedCreatePropEvent_t ParseCreatePropOptions(const char* options)
+{
+	ParsedCreatePropEvent_t ev{};
+	if (!options)
+		return ev;
+
+	std::istringstream iss(options);
+	if (iss >> ev.hash >> ev.modelPath >> ev.attachment >> ev.seqPath)
+	{
+		ev.valid = true;
+		iss >> ev.unk;
+	}
+	return ev;
+}
+
+std::string ParseBodygroupEventOptions(const char* options)
+{
+	if (!options)
+		return "";
+
+	std::string s(options);
+	s.erase(0, s.find_first_not_of(" \t\r\n"));
+	s.erase(s.find_last_not_of(" \t\r\n") + 1);
+	return s;
+}
+
 void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const meshParsedData, const ModelParsedData_t* const animParsedData, const ModelSeq_t* const previewSequence, char* const assetName, const uint64_t assetGUID, const uint64_t meshAssetGUID, const bool firstFrameForAsset)
 {
 	const bool hasMesh = meshParsedData && !meshParsedData->lods.empty();
@@ -2673,6 +2960,52 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		info->previewFrame = 0;
 	}
 
+	if (hasPreviewSequence)
+	{
+		if (info->eventLastFiredFrame.size() != previewSequence->numevents)
+		{
+			info->eventLastFiredFrame.assign(previewSequence->numevents, -1);
+			info->ClearSpawnedProps();
+		}
+
+		if (info->previewFrame == 0)
+		{
+			info->eventLastFiredFrame.assign(previewSequence->numevents, -1);
+		}
+
+		for (int evIdx = 0; evIdx < previewSequence->numevents; ++evIdx)
+		{
+			const ModelEvent_t& ev = previewSequence->events[evIdx];
+			int numFrames = sequenceState.animation->numframes;
+			int eventFrame = static_cast<int>(std::floor(ev.cycle * (numFrames - 1)));
+
+			if (info->previewFrame >= eventFrame && info->eventLastFiredFrame[evIdx] != eventFrame)
+			{
+				info->eventLastFiredFrame[evIdx] = eventFrame;
+
+				if (ev.name)
+				{
+					if (strcmp(ev.name, "AE_CL_CREATE_PROP") == 0)
+					{
+						DispatchCreatePropEvent(info, ev);
+					}
+					else if (strcmp(ev.name, "AE_ENABLE_BODYGROUP") == 0)
+					{
+						DispatchBodygroupEvent(info, ev, meshParsedData, true);
+					}
+					else if (strcmp(ev.name, "AE_DISABLE_BODYGROUP") == 0)
+					{
+						DispatchBodygroupEvent(info, ev, meshParsedData, false);
+					}
+				}
+			}
+		}
+	}
+	else
+	{
+		info->eventLastFiredFrame.clear();
+		info->ClearSpawnedProps();
+	}
 
 	ImGui::SeparatorText("Misc");
 
@@ -2687,6 +3020,8 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	}
 
 	ImGui::SameLine();
+	ImGui::Checkbox("Props", &info->showProps);
+	ImGui::SameLine();
 	ImGui::Checkbox("Bones", &info->showBones);
 	ImGui::SameLine();
 	ImGui::Checkbox("Attachments", &info->showAttachments);
@@ -2699,50 +3034,245 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 			PreviewSeqDesc(sequenceState.sequence);
 			ImGui::TreePop();
 		}
+
+		if (previewSequence->numevents > 0 && info->eventLastFiredFrame.size() == static_cast<size_t>(previewSequence->numevents))
+		{
+			ImGui::Spacing();
+			if (ImGui::TreeNodeEx("Sequence Events", ImGuiTreeNodeFlags_SpanAvailWidth))
+			{
+				for (int i = 0; i < previewSequence->numevents; ++i)
+				{
+					const ModelEvent_t& ev = previewSequence->events[i];
+					bool fired = info->eventLastFiredFrame[i] >= 0;
+					if (fired)
+						ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.0f, 1.0f, 0.0f, 1.0f));
+
+					std::string displayStr = std::format("[{:.3f}] {} {}", ev.cycle, ev.name ? ev.name : "unnamed", ev.options ? ev.options : "");
+					ImGui::TextUnformatted(displayStr.c_str());
+
+					if (fired)
+						ImGui::PopStyleColor();
+				}
+				ImGui::TreePop();
+			}
+		}
+	}
+
+	if (!info->spawnedProps.empty())
+	{
+		ImGui::Spacing();
+		if (ImGui::TreeNodeEx("Spawned Props", ImGuiTreeNodeFlags_SpanAvailWidth))
+		{
+			for (const auto& prop : info->spawnedProps)
+			{
+				std::string displayStr = "[" + prop.attachmentName + "] " + prop.seqPath + " @ " + prop.modelPath;
+				if (prop.cachedMeshParsedData == nullptr)
+					displayStr += " (resolving...)";
+
+				ImGui::TextUnformatted(displayStr.c_str());
+			}
+			ImGui::TreePop();
+		}
 	}
 
 	std::vector<PreviewBonePose_t> animPose;
-	if (animParsedData && !animParsedData->bones.empty())
-	{
-		animPose.resize(animParsedData->bones.size());
-		for (size_t i = 0; i < animParsedData->bones.size(); ++i)
-		{
-			animPose[i].pos = animParsedData->bones[i].pos;
-			animPose[i].quat = animParsedData->bones[i].quat;
-			animPose[i].scale = animParsedData->bones[i].scale;
-		}
-
-		if (hasPreviewSequence)
-			EvaluateAnimationPose(sequenceState.sequence, sequenceState.skeleton, sequenceState.animation, info->previewFrame, animPose);
-	}
-
 	std::vector<PreviewBonePose_t> meshPose;
+	AdvanceAndUploadPose(drawData, meshParsedData, animParsedData,
+		hasPreviewSequence ? sequenceState.sequence : nullptr,
+		hasPreviewSequence ? sequenceState.animation : nullptr,
+		info->previewFrame,
+		g_currentPreviewDrawData.activeLODLevel,
+		animPose,
+		meshPose);
+
 	std::vector<matrix3x4_t> meshWorldMatrices;
 	std::vector<PreviewAttachmentWorld_t> previewAttachments;
 	if (meshParsedData && hasMesh)
 	{
-		meshPose.resize(meshParsedData->bones.size());
-		for (size_t i = 0; i < meshParsedData->bones.size(); ++i)
-		{
-			meshPose[i].pos = meshParsedData->bones[i].pos;
-			meshPose[i].quat = meshParsedData->bones[i].quat;
-			meshPose[i].scale = meshParsedData->bones[i].scale;
-		}
+		BuildWorldBoneMatrices(meshParsedData->bones, meshPose, meshWorldMatrices);
+		BuildAttachmentWorldTransforms(meshParsedData, meshWorldMatrices, previewAttachments);
+	}
 
-		if (!animPose.empty())
+	drawData->childDrawDatas.clear();
+
+	for (auto& prop : info->spawnedProps)
+	{
+		if (!info->showProps)
+			continue;
+
+		if (prop.cachedMeshParsedData == nullptr)
 		{
-			std::vector<int> remap;
-			BuildBoneNameRemap(remap, meshParsedData->bones, animParsedData->bones);
-			for (size_t i = 0; i < meshPose.size(); ++i)
+			CPakAsset* const modelPak = g_assetData.FindAssetByGUID<CPakAsset>(prop.modelGuid);
+			if (!modelPak)
+				continue;
+			ModelAsset* const propModelAsset = modelPak->extraData<ModelAsset*>();
+			if (!propModelAsset)
+				continue;
+			prop.cachedMeshParsedData = propModelAsset->GetParsedData();
+
+			if (propModelAsset->numAnimRigs > 0)
 			{
-				const int animBone = remap[i];
-				if (animBone >= 0)
-					meshPose[i] = animPose[animBone];
+				uint64_t rigGuid = propModelAsset->animRigs[0].guid;
+				CPakAsset* const rigPak = g_assetData.FindAssetByGUID<CPakAsset>(rigGuid);
+				if (rigPak)
+				{
+					AnimRigAsset* const rigAsset = rigPak->extraData<AnimRigAsset*>();
+					if (rigAsset)
+						prop.cachedAnimParsedData = rigAsset->GetParsedData();
+				}
+			}
+
+			if (!prop.cachedAnimParsedData)
+				prop.cachedAnimParsedData = prop.cachedMeshParsedData;
+
+			CPakAsset* const seqPak = g_assetData.FindAssetByGUID<CPakAsset>(prop.seqGuid);
+			if (seqPak)
+			{
+				AnimSeqAsset* const seqAsset = seqPak->extraData<AnimSeqAsset*>();
+				if (seqAsset && seqAsset->animationParsed)
+					prop.cachedSeq = &seqAsset->seqdesc;
 			}
 		}
 
-		BuildWorldBoneMatrices(meshParsedData->bones, meshPose, meshWorldMatrices);
-		BuildAttachmentWorldTransforms(meshParsedData, meshWorldMatrices, previewAttachments);
+		if (prop.cachedMeshParsedData == nullptr || prop.cachedAnimParsedData == nullptr || prop.cachedSeq == nullptr)
+			continue;
+
+		const PreviewAttachmentWorld_t* attachWorld = FindPreviewAttachmentByName(previewAttachments, prop.attachmentName.c_str());
+		if (!attachWorld)
+			continue;
+
+		if (!sequenceState.animation || sequenceState.animation->fps <= 0.0f)
+			continue;
+
+		float mainFps = sequenceState.animation->fps;
+		float mainDuration = sequenceState.animation->Duration();
+		int mainFrame = info->previewFrame;
+		float mainTime = mainFrame / mainFps;
+
+		float propTime = std::max(mainTime - prop.spawnCycle * mainDuration, 0.0f);
+
+		if (prop.cachedSeq->AnimCount() == 0)
+			continue;
+
+		const ModelAnim_t& propAnim = prop.cachedSeq->anims[0];
+		float propFps = std::max(propAnim.fps, 1.0f);
+		int propMaxFrame = std::max(propAnim.numframes - 1, 0);
+		float propDuration = std::max(propAnim.Duration(), 1.0f / propFps);
+
+		if (prop.looping)
+			propTime = std::fmod(propTime, propDuration);
+		else
+			propTime = std::min(propTime, propDuration);
+
+		int propFrame = std::clamp(static_cast<int>(std::round(propTime * propFps)), 0, propMaxFrame);
+
+		if (mainTime < prop.spawnCycle * mainDuration)
+			continue;
+
+		if (prop.drawData == nullptr)
+		{
+			prop.drawData = new CDXDrawData();
+			prop.drawData->meshBuffers.resize(prop.cachedMeshParsedData->lods.at(0).meshes.size());
+
+			CPakAsset* const modelPak = g_assetData.FindAssetByGUID<CPakAsset>(prop.modelGuid);
+			if (modelPak)
+				prop.drawData->modelName = const_cast<char*>(modelPak->GetAssetName().c_str());
+
+			prop.drawData->dataType = CDXDrawData::DrawDataType_e::MODEL;
+			CreateBuffersForModelDrawData(prop.cachedMeshParsedData, prop.drawData, 0);
+			CreateBuffersForModelHitboxes(prop.cachedMeshParsedData, prop.drawData);
+		}
+
+		prop.drawData->vertexShader = drawData->vertexShader;
+		prop.drawData->pixelShader = drawData->pixelShader;
+
+		for (size_t meshIndex = 0; meshIndex < prop.cachedMeshParsedData->lods.at(0).meshes.size(); ++meshIndex)
+		{
+			const ModelMeshData_t& mesh = prop.cachedMeshParsedData->lods.at(0).meshes.at(meshIndex);
+			DXMeshDrawData_t* const meshDrawData = &prop.drawData->meshBuffers[meshIndex];
+
+			meshDrawData->indexFormat = DXGI_FORMAT_R16_UINT;
+			meshDrawData->wireframe = false;
+			meshDrawData->visible = prop.cachedMeshParsedData->bodyParts[mesh.bodyPartIndex].IsPreviewEnabled();
+
+			const ModelBodyPart_t& bodypart = prop.cachedMeshParsedData->bodyParts[mesh.bodyPartIndex];
+			if (bodypart.modelIndex >= 0 && bodypart.modelIndex < prop.cachedMeshParsedData->lods.at(0).models.size())
+			{
+				const ModelModelData_t& model = prop.cachedMeshParsedData->lods.at(0).models.at(bodypart.modelIndex);
+				if (meshIndex >= model.meshIndex && meshIndex < model.meshIndex + model.meshCount)
+					meshDrawData->visible = true;
+				else
+					meshDrawData->visible = false;
+			}
+
+			meshDrawData->pixelShader = prop.drawData->pixelShader->Get<ID3D11PixelShader>();
+			meshDrawData->vertexShader = prop.drawData->vertexShader->Get<ID3D11VertexShader>();
+			meshDrawData->inputLayout = prop.drawData->vertexShader->GetInputLayout();
+			meshDrawData->hasGameShaders = false;
+
+			if (prop.cachedMeshParsedData->skins.empty())
+				continue;
+
+			const ModelSkinData_t* skinData = &prop.cachedMeshParsedData->skins.at(0);
+			CPakAsset* const matlAsset = prop.cachedMeshParsedData->materials.at(skinData->indices[mesh.materialId]).asset;
+			if (!matlAsset)
+				continue;
+
+			const MaterialAsset* const matl = reinterpret_cast<MaterialAsset*>(matlAsset->extraData());
+			if (meshDrawData->textures.size() == 0 && matl)
+			{
+				meshDrawData->textures.clear();
+				for (auto& texEntry : matl->txtrAssets)
+				{
+					if (texEntry.asset)
+					{
+						TextureAsset* txtr = reinterpret_cast<TextureAsset*>(texEntry.asset->extraData());
+						for (auto& mip : txtr->mipArray | std::views::reverse)
+						{
+							if (mip.isLoaded)
+							{
+								const std::shared_ptr<CTexture> highestTextureMip = CreateTextureFromMip(texEntry.asset, &mip, s_PakToDxgiFormat[txtr->imgFormat]);
+								meshDrawData->textures.push_back({ texEntry.index, highestTextureMip });
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		std::vector<PreviewBonePose_t> tempAnimPose;
+		AdvanceAndUploadPose(
+			prop.drawData,
+			prop.cachedMeshParsedData,
+			prop.cachedAnimParsedData,
+			prop.cachedSeq,
+			&propAnim,
+			propFrame,
+			0,
+			tempAnimPose,
+			prop.lastPose
+		);
+
+		prop.drawData->useWorldTransform = true;
+
+		matrix3x4_t rotationMatrix = matrix3x4_t::Identity();
+		rotationMatrix[0][0] = 0.0f;  rotationMatrix[0][1] = -1.0f; rotationMatrix[0][2] = 0.0f;
+		rotationMatrix[1][0] = 1.0f;   rotationMatrix[1][1] = 0.0f;  rotationMatrix[1][2] = 0.0f;
+		rotationMatrix[2][0] = 0.0f;   rotationMatrix[2][1] = 0.0f;  rotationMatrix[2][2] = 1.0f;
+
+		matrix3x4_t propWorldMatrix;
+		ConcatTransforms(attachWorld->worldMatrix, rotationMatrix, propWorldMatrix);
+
+		prop.drawData->worldTransform = propWorldMatrix;
+
+		Preview_MapTransformsBuffer(prop.drawData);
+		Preview_MapModelInstanceBuffer(prop.drawData);
+
+		for (auto& rsrc : drawData->pixelShaderResources)
+			prop.drawData->SetPSResource(rsrc.first, rsrc.second);
+
+		drawData->childDrawDatas.push_back(prop.drawData);
 	}
 
 	ClearDebugPrimitives(drawData);
@@ -2750,6 +3280,77 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		DrawPreviewBones(drawData, animParsedData, animPose);
 	if (info->showAttachments && !previewAttachments.empty())
 		DrawPreviewAttachments(drawData, previewAttachments);
+
+	for (auto& prop : info->spawnedProps)
+	{
+		if (!info->showProps)
+			continue;
+
+		if (prop.cachedMeshParsedData == nullptr || prop.lastPose.empty())
+			continue;
+
+		const PreviewAttachmentWorld_t* attachWorld = FindPreviewAttachmentByName(previewAttachments, prop.attachmentName.c_str());
+		if (!attachWorld)
+			continue;
+
+		// Rotate 90 degrees to the left (yaw) around local Z-axis (up) in Z-up space
+		matrix3x4_t rotationMatrix = matrix3x4_t::Identity();
+		rotationMatrix[0][0] = 0.0f;  rotationMatrix[0][1] = -1.0f; rotationMatrix[0][2] = 0.0f;
+		rotationMatrix[1][0] = 1.0f;   rotationMatrix[1][1] = 0.0f;  rotationMatrix[1][2] = 0.0f;
+		rotationMatrix[2][0] = 0.0f;   rotationMatrix[2][1] = 0.0f;  rotationMatrix[2][2] = 1.0f;
+
+		matrix3x4_t propWorldMatrix;
+		ConcatTransforms(attachWorld->worldMatrix, rotationMatrix, propWorldMatrix);
+
+		if (info->showBones && prop.cachedAnimParsedData)
+		{
+			DrawPreviewBonesWithRootTransform(
+				drawData,
+				prop.cachedAnimParsedData,
+				prop.lastPose,
+				propWorldMatrix
+			);
+		}
+
+		if (info->showAttachments)
+		{
+			std::vector<PreviewBonePose_t> propMeshPose;
+			propMeshPose.resize(prop.cachedMeshParsedData->bones.size());
+			for (size_t i = 0; i < prop.cachedMeshParsedData->bones.size(); ++i)
+			{
+				propMeshPose[i].pos = prop.cachedMeshParsedData->bones[i].pos;
+				propMeshPose[i].quat = prop.cachedMeshParsedData->bones[i].quat;
+				propMeshPose[i].scale = prop.cachedMeshParsedData->bones[i].scale;
+			}
+
+			if (prop.cachedAnimParsedData != prop.cachedMeshParsedData)
+			{
+				std::vector<int> remap;
+				BuildBoneNameRemap(remap, prop.cachedMeshParsedData->bones, prop.cachedAnimParsedData->bones);
+				for (size_t i = 0; i < propMeshPose.size(); ++i)
+				{
+					const int animBone = remap[i];
+					if (animBone >= 0)
+						propMeshPose[i] = prop.lastPose[animBone];
+				}
+			}
+			else
+			{
+				for (size_t i = 0; i < propMeshPose.size(); ++i)
+					propMeshPose[i] = prop.lastPose[i];
+			}
+
+			std::vector<matrix3x4_t> propMeshWorldMatrices;
+			BuildWorldBoneMatrices(prop.cachedMeshParsedData->bones, propMeshPose, propMeshWorldMatrices);
+
+			DrawPreviewAttachmentsWithRootTransform(
+				drawData,
+				prop.cachedMeshParsedData,
+				propMeshWorldMatrices,
+				propWorldMatrix
+			);
+		}
+	}
 
 	if (info->attachCameraToCameraAttachment)
 	{
@@ -2789,7 +3390,7 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 			const ModelBodyPart_t& bodypart = meshParsedData->bodyParts[mesh.bodyPartIndex];
 			const ModelModelData_t& model = lodData->models.at(bodypart.modelIndex + info->bodygroupModelSelected.at(mesh.bodyPartIndex));
 
-			if (i >= model.meshIndex && i < model.meshIndex + model.meshCount)
+			if (bodypart.IsPreviewEnabled() && i >= model.meshIndex && i < model.meshIndex + model.meshCount)
 				drawData->meshBuffers[i].visible = true;
 			else
 				drawData->meshBuffers[i].visible = false;
@@ -2844,26 +3445,7 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		}
 	}
 
-#if defined(HAS_BONED_MODELS)
-	if (hasMesh && !drawData->boneMatrixBuffer)
-		InitModelBoneMatrix(drawData, meshParsedData);
 
-	if (hasMesh && drawData->boneMatrixBuffer)
-	{
-		if (meshPose.empty())
-		{
-			meshPose.resize(meshParsedData->bones.size());
-			for (size_t i = 0; i < meshParsedData->bones.size(); ++i)
-			{
-				meshPose[i].pos = meshParsedData->bones[i].pos;
-				meshPose[i].quat = meshParsedData->bones[i].quat;
-				meshPose[i].scale = meshParsedData->bones[i].scale;
-			}
-		}
-
-		UpdatePreviewSkinnedMeshes(drawData, meshParsedData, meshPose);
-	}
-#endif
 
 	Preview_MapTransformsBuffer(drawData);
 	Preview_MapModelInstanceBuffer(drawData);

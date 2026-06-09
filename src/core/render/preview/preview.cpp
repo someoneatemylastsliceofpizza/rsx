@@ -37,7 +37,20 @@ void Preview_MapTransformsBuffer(CDXDrawData* drawData)
 		drawData->position = camera->position;
 
 	const XMMATRIX view = camera->GetViewMatrix();
-	const XMMATRIX model = XMMatrixTranslationFromVector(drawData->position.AsXMVector());
+	XMMATRIX model;
+	if (drawData->useWorldTransform)
+	{
+		model = XMMATRIX(
+			drawData->worldTransform[0][0], drawData->worldTransform[2][0], drawData->worldTransform[1][0], 0.0f,
+			drawData->worldTransform[0][2], drawData->worldTransform[2][2], drawData->worldTransform[1][2], 0.0f,
+			drawData->worldTransform[0][1], drawData->worldTransform[2][1], drawData->worldTransform[1][1], 0.0f,
+			drawData->worldTransform[0][3], drawData->worldTransform[2][3], drawData->worldTransform[1][3], 1.0f
+		);
+	}
+	else
+	{
+		model = XMMatrixTranslationFromVector(drawData->position.AsXMVector());
+	}
 	const XMMATRIX projection = g_dxHandler->GetProjMatrix();
 
 	VS_TransformConstants* const transforms = reinterpret_cast<VS_TransformConstants*>(resource.pData);
@@ -79,7 +92,20 @@ void Preview_MapModelInstanceBuffer(CDXDrawData* drawData)
 
 	CDXCamera* const camera = g_dxHandler->GetCamera();
 	const XMMATRIX view = camera->GetViewMatrix();
-	const XMMATRIX model = XMMatrixTranslationFromVector(drawData->position.AsXMVector());
+	XMMATRIX model;
+	if (drawData->useWorldTransform)
+	{
+		model = XMMATRIX(
+			drawData->worldTransform[0][0], drawData->worldTransform[2][0], drawData->worldTransform[1][0], 0.0f,
+			drawData->worldTransform[0][2], drawData->worldTransform[2][2], drawData->worldTransform[1][2], 0.0f,
+			drawData->worldTransform[0][1], drawData->worldTransform[2][1], drawData->worldTransform[1][1], 0.0f,
+			drawData->worldTransform[0][3], drawData->worldTransform[2][3], drawData->worldTransform[1][3], 1.0f
+		);
+	}
+	else
+	{
+		model = XMMatrixTranslationFromVector(drawData->position.AsXMVector());
+	}
 	const XMMATRIX projection = g_dxHandler->GetProjMatrix();
 
 	CBufModelInstance* const modelInstance = reinterpret_cast<CBufModelInstance*>(resource.pData);

@@ -294,6 +294,10 @@ public:
 
     DrawDataType_e dataType;
 
+    matrix3x4_t worldTransform{};
+    bool useWorldTransform = false;
+    std::vector<CDXDrawData*> childDrawDatas;
+
     void SetPSResource(uint8_t bindPoint, ID3D11ShaderResourceView* srv)
     {
         pixelShaderResources[bindPoint] = srv;

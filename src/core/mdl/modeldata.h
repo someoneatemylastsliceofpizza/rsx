@@ -885,6 +885,46 @@ bool ExportSeqQC(const ModelParsedData_t* const parsedData, const ModelSeq_t* co
 void UpdateModelBoneMatrix(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData);
 void InitModelBoneMatrix(CDXDrawData* const drawData, const ModelParsedData_t* const parsedData);
 
+struct PreviewBonePose_t
+{
+	Vector pos{};
+	Quaternion quat{};
+	Vector scale{ 1.0f, 1.0f, 1.0f };
+};
+
+struct PropEntity_t
+{
+	uint64_t    modelGuid = 0;
+	uint64_t    seqGuid = 0;
+	std::string attachmentName;
+	std::string seqPath;
+	std::string modelPath;
+
+	float       spawnCycle = 0.0f;
+	bool        looping = false;
+
+	ModelParsedData_t*       cachedMeshParsedData   = nullptr;
+	const ModelParsedData_t* cachedAnimParsedData   = nullptr;
+	const ModelSeq_t*        cachedSeq              = nullptr;
+
+	std::vector<PreviewBonePose_t> lastPose;
+
+	class CDXDrawData* drawData = nullptr;
+};
+
+struct ParsedCreatePropEvent_t
+{
+	std::string hash;
+	std::string modelPath;
+	std::string attachment;
+	std::string seqPath;
+	int         unk = 0;
+	bool        valid = false;
+};
+
+ParsedCreatePropEvent_t ParseCreatePropOptions(const char* options);
+std::string ParseBodygroupEventOptions(const char* options);
+
 struct ModelPreviewInfo_t
 {
 	ModelPreviewInfo_t() : lastSelectedBodypartIndex(0u), selectedBodypartIndex(0u), lastSelectedSkinIndex(0u), selectedSkinIndex(0u), selectedLODLevel(0u), minLODIndex(0u), maxLODIndex(0u)
@@ -915,9 +955,15 @@ struct ModelPreviewInfo_t
 
 	bool previewAnimationPlaying = true;
 	bool previewAnimationLoop = true;
+	bool showProps = true;
 	bool showBones = false;
 	bool showAttachments = false;
 	bool attachCameraToCameraAttachment = false;
+
+	std::vector<int> eventLastFiredFrame;
+	std::vector<PropEntity_t> spawnedProps;
+
+	void ClearSpawnedProps();
 };
 
 void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const meshParsedData, const ModelParsedData_t* const animParsedData, const ModelSeq_t* const previewSequence, char* const assetName, const uint64_t assetGUID, const uint64_t meshAssetGUID, const bool firstFrameForAsset);

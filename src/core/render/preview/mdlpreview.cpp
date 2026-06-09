@@ -171,6 +171,95 @@ void Preview_Model(CDXDrawData* drawData, float dt)
             ctx->DrawIndexed(static_cast<UINT>(meshDrawData.numIndices), 0u, 0u);
         }
 
+        // Render child draw datas (Props)
+        for (CDXDrawData* const child : drawData->childDrawDatas)
+        {
+            if (!child || !child->transformsBuffer)
+                continue;
+
+            ctx->VSSetConstantBuffers(0u, 1u, &child->transformsBuffer);
+
+            for (size_t i = 0; i < child->meshBuffers.size(); ++i)
+            {
+                const DXMeshDrawData_t& meshDrawData = child->meshBuffers[i];
+
+                if (!meshDrawData.visible || !meshDrawData.vertexShader || !meshDrawData.pixelShader)
+                    continue;
+
+                child->SetVSResource(61u, meshDrawData.weightsSRV);
+
+                ctx->RSSetState(meshDrawData.wireframe ? g_dxHandler->GetRasterizerStateWireFrame() : g_dxHandler->GetRasterizerState());
+
+                ctx->IASetInputLayout(meshDrawData.inputLayout);
+                ctx->VSSetShader(meshDrawData.vertexShader, nullptr, 0u);
+
+                ID3D11Buffer* sharedConstBuffers[] = {
+                    camera->bufCommonPerCamera,
+                    child->modelInstanceBuffer,
+                };
+
+                for (auto& rsrc : child->vertexShaderResources)
+                {
+                    if (rsrc.second)
+                        ctx->VSSetShaderResources(rsrc.first, 1u, &rsrc.second);
+                }
+
+                if (meshDrawData.hasGameShaders)
+                {
+                    ctx->VSSetConstantBuffers(2u, ARRSIZE(sharedConstBuffers), sharedConstBuffers);
+                }
+
+                ctx->VSSetShaderResources(VSRSRC_BONE_MATRIX, 1u, &child->boneMatrixSRV);
+                ctx->VSSetShaderResources(VSRSRC_BONE_MATRIX_PREV_FRAME, 1u, &child->boneMatrixSRV);
+
+                ctx->IASetVertexBuffers(0u, 1u, &meshDrawData.vertexBuffer, &meshDrawData.vertexStride, &offset);
+
+                ctx->PSSetShader(meshDrawData.pixelShader, nullptr, 0u);
+
+                ID3D11SamplerState* const samplerState = g_dxHandler->GetSamplerState();
+
+                if (meshDrawData.hasGameShaders)
+                {
+                    ID3D11SamplerState* samplers[] = {
+                        g_dxHandler->GetSamplerComparisonState(),
+                        samplerState,
+                        samplerState,
+                    };
+                    ctx->PSSetSamplers(0, ARRSIZE(samplers), samplers);
+
+                    if (meshDrawData.uberStaticBuf)
+                        ctx->PSSetConstantBuffers(0u, 1u, &meshDrawData.uberStaticBuf);
+
+                    if (meshDrawData.uberDynamicBuf)
+                        ctx->PSSetConstantBuffers(1u, 1u, &meshDrawData.uberDynamicBuf);
+
+                    ctx->PSSetConstantBuffers(2u, ARRSIZE(sharedConstBuffers), sharedConstBuffers);
+
+                    ctx->PSSetShaderResources(PSRSRC_GLOBAL_LIGHTS, 1u, &scene.globalLightsSRV);
+                    ctx->PSSetShaderResources(PSRSRC_CUBEMAP_SAMPLES, 1u, &scene.cubemapSamplesSRV);
+                }
+                else
+                    ctx->PSSetSamplers(0, 1, &samplerState);
+
+                for (auto& tex : meshDrawData.textures)
+                {
+                    ID3D11ShaderResourceView* const textureSRV = tex.texture
+                        ? tex.texture.get()->GetSRV()
+                        : nullptr;
+
+                    ctx->PSSetShaderResources(tex.resourceBindPoint, 1u, &textureSRV);
+                }
+
+                for (auto& rsrc : child->pixelShaderResources)
+                {
+                    ctx->PSSetShaderResources(rsrc.first, 1u, &rsrc.second);
+                }
+
+                ctx->IASetIndexBuffer(meshDrawData.indexBuffer, meshDrawData.indexFormat, 0u);
+                ctx->DrawIndexed(static_cast<UINT>(meshDrawData.numIndices), 0u, 0u);
+            }
+        }
+
         CShader* vertexShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("preview/prim_vs", s_PrimitiveVertexShader, eShaderType::Vertex, s_PrimitiveInputLayout, std::size(s_PrimitiveInputLayout));
         CShader* pixelShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("preview/prim_ps", s_PrimitivePixelShader, eShaderType::Pixel);
         

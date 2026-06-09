@@ -482,7 +482,6 @@ void* PreviewSourceModelAsset(CAsset* const asset, const bool firstFrameForAsset
         previewInfo.previewFrame = 0;
         previewInfo.previewAnimationPlaying = true;
         previewInfo.previewAnimationLoop = true;
-        previewInfo.showBones = false;
     }
 
     return PreviewParsedData(&previewInfo, parsedData, parsedData, nullptr, srcMdlAsset->GetNameData(), asset->GetAssetGUID(), asset->GetAssetGUID(), firstFrameForAsset);

@@ -285,9 +285,8 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.previewFrame = 0;
         previewInfo.previewAnimationPlaying = true;
         previewInfo.previewAnimationLoop = true;
-        previewInfo.showBones = false;
-        previewInfo.showAttachments = false;
-        previewInfo.attachCameraToCameraAttachment = false;
+        previewInfo.eventLastFiredFrame.clear();
+        previewInfo.ClearSpawnedProps();
     }
 
     struct PreviewOption_t
@@ -344,6 +343,8 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
             previewInfo.selectedModelGuid = 0ull;
             previewInfo.bodygroupModelSelected.clear();
             previewInfo.selectedAnimationIndex = 0;
+            previewInfo.eventLastFiredFrame.clear();
+            previewInfo.ClearSpawnedProps();
         }
         if (noModelSelected)
             ImGui::SetItemDefaultFocus();
@@ -357,6 +358,8 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
                 previewInfo.bodygroupModelSelected.clear();
                 previewInfo.selectedAnimationIndex = 0;
                 previewInfo.previewTime = 0.0f;
+                previewInfo.eventLastFiredFrame.clear();
+                previewInfo.ClearSpawnedProps();
             }
             if (isSelected)
                 ImGui::SetItemDefaultFocus();
@@ -414,6 +417,8 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
                 previewInfo.selectedAnimationIndex = 0;
                 previewInfo.previewTime = 0.0f;
                 previewInfo.previewFrame = 0;
+                previewInfo.eventLastFiredFrame.clear();
+                previewInfo.ClearSpawnedProps();
             }
             if (isSelected)
                 ImGui::SetItemDefaultFocus();
