@@ -287,6 +287,9 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.previewAnimationLoop = true;
         previewInfo.eventLastFiredFrame.clear();
         previewInfo.ClearSpawnedProps();
+        // Keep extraModelGuids (user selection) — only free draw datas so they
+        // reinitialise against the new rig's bone layout next frame.
+        previewInfo.ClearExtraModelDrawDatas();
     }
 
     struct PreviewOption_t
@@ -393,7 +396,25 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
     }
 
     if (previewInfo.selectedSequenceGuid == 0ull && !sequenceOptions.empty())
+    {
         previewInfo.selectedSequenceGuid = sequenceOptions.front().guid;
+        for (const PreviewOption_t& option : sequenceOptions)
+        {
+            const uint64_t guid = option.guid;
+            AnimSeqAsset* selectedSequenceAsset = nullptr;
+
+            if (CPakAsset* const seqAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid))
+                selectedSequenceAsset = seqAsset->extraData<AnimSeqAsset*>();
+
+            if (selectedSequenceAsset
+                && selectedSequenceAsset->seqdesc.szactivityname != nullptr
+                && strcmp(selectedSequenceAsset->seqdesc.szactivityname, "ACT_VM_WEAPON_INSPECT") == 0)
+            {
+                previewInfo.selectedSequenceGuid = guid;
+                break;
+            }
+        }
+    }
 
     AnimSeqAsset* selectedSequence = nullptr;
     if (previewInfo.selectedSequenceGuid)
@@ -440,6 +461,98 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         {
             previewInfo.maxLODIndex = static_cast<uint8_t>(meshParsedData->lods.size()) - 1;
             previewInfo.selectedLODLevel = std::min(previewInfo.selectedLODLevel, previewInfo.maxLODIndex);
+        }
+    }
+
+    std::vector<PreviewOption_t> allModelOptions;
+    for (auto& lookup : g_assetData.v_assets)
+    {
+        CAsset* const candidateAsset = lookup.m_asset;
+        if (!candidateAsset || candidateAsset->GetAssetContainerType() != CAsset::ContainerType::PAK)
+            continue;
+
+        CPakAsset* const candidate = static_cast<CPakAsset*>(candidateAsset);
+        if (candidate->GetAssetType() != '_ldm' || !candidate->hasExtraData())
+            continue;
+
+        allModelOptions.push_back({ candidate->GetAssetGUID(), candidate->GetAssetName() });
+    }
+
+    static char s_extraModelSearch[2][256] = { "", "" };
+    static bool s_focusSearch[2] = { false, false };
+
+    ImGui::SeparatorText("Extra Models");
+    for (int slotIdx = 0; slotIdx < 2; ++slotIdx)
+    {
+        const uint64_t currentGuid = previewInfo.extraModelGuids[slotIdx];
+
+        const char* extraModelLabel = "<none>";
+        if (currentGuid != 0ull)
+        {
+            if (CPakAsset* const extraPak = g_assetData.FindAssetByGUID<CPakAsset>(currentGuid))
+                extraModelLabel = extraPak->GetAssetName().c_str();
+        }
+
+        const std::string comboLabel = std::format("##ExtraModel{}", slotIdx);
+        ImGui::Text("Slot %d:", slotIdx + 1);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(-1.0f);
+        if (ImGui::BeginCombo(comboLabel.c_str(), extraModelLabel))
+        {
+            if (s_focusSearch[slotIdx])
+            {
+                ImGui::SetKeyboardFocusHere();
+                s_focusSearch[slotIdx] = false;
+            }
+
+            const std::string searchId = std::format("##ExtraModelSearch{}", slotIdx);
+            ImGui::SetNextItemWidth(-1.0f);
+            ImGui::InputTextWithHint(searchId.c_str(), "Search...", s_extraModelSearch[slotIdx], sizeof(s_extraModelSearch[slotIdx]));
+
+            ImGui::Separator();
+
+            const std::string_view filter(s_extraModelSearch[slotIdx]);
+
+            const bool noneSelected = (currentGuid == 0ull);
+            if (ImGui::Selectable("<none>", noneSelected))
+            {
+                previewInfo.extraModelGuids[slotIdx] = 0ull;
+                previewInfo.ClearExtraModelDrawData(slotIdx);
+                s_extraModelSearch[slotIdx][0] = '\0';
+            }
+            if (noneSelected)
+                ImGui::SetItemDefaultFocus();
+
+            for (const PreviewOption_t& option : allModelOptions)
+            {
+                if (!filter.empty())
+                {
+                    const std::string& label = option.label;
+                    const bool matches = std::search(
+                        label.begin(), label.end(),
+                        filter.begin(), filter.end(),
+                        [](char a, char b) { return std::tolower((unsigned char)a) == std::tolower((unsigned char)b); }
+                    ) != label.end();
+                    if (!matches)
+                        continue;
+                }
+
+                const bool isSelected = (currentGuid == option.guid);
+                if (ImGui::Selectable(option.label.c_str(), isSelected))
+                {
+                    previewInfo.extraModelGuids[slotIdx] = option.guid;
+                    previewInfo.ClearExtraModelDrawData(slotIdx);
+                    s_extraModelSearch[slotIdx][0] = '\0';
+                }
+                if (isSelected)
+                    ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+        else
+        {
+            s_focusSearch[slotIdx] = true;
         }
     }
 

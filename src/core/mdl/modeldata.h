@@ -962,8 +962,13 @@ struct ModelPreviewInfo_t
 
 	std::vector<int> eventLastFiredFrame;
 	std::vector<PropEntity_t> spawnedProps;
+	std::array<uint64_t, 2> extraModelGuids = { 0, 0 };
+	std::array<class CDXDrawData*, 2> extraModelDrawDatas = { nullptr, nullptr };
+	std::array<std::vector<PreviewBonePose_t>, 2> extraModelLastMeshPose;
 
 	void ClearSpawnedProps();
+	void ClearExtraModelDrawDatas();
+	void ClearExtraModelDrawData(int slot);
 };
 
 void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const meshParsedData, const ModelParsedData_t* const animParsedData, const ModelSeq_t* const previewSequence, char* const assetName, const uint64_t assetGUID, const uint64_t meshAssetGUID, const bool firstFrameForAsset);

@@ -2702,6 +2702,24 @@ void ModelPreviewInfo_t::ClearSpawnedProps()
 	spawnedProps.clear();
 }
 
+void ModelPreviewInfo_t::ClearExtraModelDrawDatas()
+{
+	for (CDXDrawData*& dd : extraModelDrawDatas)
+	{
+		delete dd;
+		dd = nullptr;
+	}
+}
+
+void ModelPreviewInfo_t::ClearExtraModelDrawData(int slot)
+{
+	if (slot >= 0 && slot < static_cast<int>(extraModelDrawDatas.size()))
+	{
+		delete extraModelDrawDatas[slot];
+		extraModelDrawDatas[slot] = nullptr;
+	}
+}
+
 ParsedCreatePropEvent_t ParseCreatePropOptions(const char* options)
 {
 	ParsedCreatePropEvent_t ev{};
@@ -3095,6 +3113,113 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 
 	drawData->childDrawDatas.clear();
 
+	for (int extraIdx = 0; extraIdx < 2; ++extraIdx)
+	{
+		const uint64_t extraGuid = info->extraModelGuids[extraIdx];
+		if (extraGuid == 0)
+			continue;
+
+		CPakAsset* const extraModelPak = g_assetData.FindAssetByGUID<CPakAsset>(extraGuid);
+		if (!extraModelPak)
+			continue;
+		ModelAsset* const extraModelAsset = extraModelPak->extraData<ModelAsset*>();
+		if (!extraModelAsset)
+			continue;
+		ModelParsedData_t* const extraParsedData = extraModelAsset->GetParsedData();
+		if (!extraParsedData || extraParsedData->lods.empty())
+			continue;
+
+		const uint8_t extraLOD = std::min(activeLOD, static_cast<uint8_t>(extraParsedData->lods.size() - 1));
+
+		CDXDrawData*& extraDrawData = info->extraModelDrawDatas[extraIdx];
+		if (extraDrawData == nullptr)
+		{
+			extraDrawData = new CDXDrawData();
+			extraDrawData->meshBuffers.resize(extraParsedData->lods.at(extraLOD).meshes.size());
+			extraDrawData->modelName = const_cast<char*>(extraModelPak->GetAssetName().c_str());
+			extraDrawData->dataType = CDXDrawData::DrawDataType_e::MODEL;
+			CreateBuffersForModelDrawData(extraParsedData, extraDrawData, extraLOD);
+			CreateBuffersForModelHitboxes(extraParsedData, extraDrawData);
+		}
+
+		extraDrawData->vertexShader = drawData->vertexShader;
+		extraDrawData->pixelShader  = drawData->pixelShader;
+
+		const ModelLODData_t& extraLodData = extraParsedData->lods.at(extraLOD);
+		for (size_t meshIndex = 0; meshIndex < extraLodData.meshes.size(); ++meshIndex)
+		{
+			const ModelMeshData_t& mesh = extraLodData.meshes.at(meshIndex);
+			DXMeshDrawData_t* const mdd = &extraDrawData->meshBuffers[meshIndex];
+
+			mdd->indexFormat = DXGI_FORMAT_R16_UINT;
+			mdd->wireframe   = false;
+			mdd->visible     = extraParsedData->bodyParts[mesh.bodyPartIndex].IsPreviewEnabled();
+
+			const ModelBodyPart_t& bodypart = extraParsedData->bodyParts[mesh.bodyPartIndex];
+			if (bodypart.modelIndex >= 0 && bodypart.modelIndex < static_cast<int>(extraLodData.models.size()))
+			{
+				const ModelModelData_t& model = extraLodData.models.at(bodypart.modelIndex);
+				mdd->visible = (meshIndex >= model.meshIndex && meshIndex < model.meshIndex + model.meshCount);
+			}
+
+			mdd->pixelShader  = extraDrawData->pixelShader->Get<ID3D11PixelShader>();
+			mdd->vertexShader = extraDrawData->vertexShader->Get<ID3D11VertexShader>();
+			mdd->inputLayout  = extraDrawData->vertexShader->GetInputLayout();
+			mdd->hasGameShaders = false;
+
+			if (extraParsedData->skins.empty())
+				continue;
+
+			const ModelSkinData_t* skinData = &extraParsedData->skins.at(0);
+			CPakAsset* const matlAsset = extraParsedData->materials.at(skinData->indices[mesh.materialId]).asset;
+			if (!matlAsset)
+				continue;
+
+			const MaterialAsset* const matl = reinterpret_cast<MaterialAsset*>(matlAsset->extraData());
+			if (mdd->textures.empty() && matl)
+			{
+				mdd->textures.clear();
+				for (auto& texEntry : matl->txtrAssets)
+				{
+					if (texEntry.asset)
+					{
+						TextureAsset* txtr = reinterpret_cast<TextureAsset*>(texEntry.asset->extraData());
+						for (auto& mip : txtr->mipArray | std::views::reverse)
+						{
+							if (mip.isLoaded)
+							{
+								const std::shared_ptr<CTexture> highestTextureMip = CreateTextureFromMip(texEntry.asset, &mip, s_PakToDxgiFormat[txtr->imgFormat]);
+								mdd->textures.push_back({ texEntry.index, highestTextureMip });
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+
+		std::vector<PreviewBonePose_t> tempAnimPose;
+		AdvanceAndUploadPose(
+			extraDrawData,
+			extraParsedData,
+			animParsedData,
+			hasPreviewSequence ? sequenceState.sequence   : nullptr,
+			hasPreviewSequence ? sequenceState.animation  : nullptr,
+			info->previewFrame,
+			extraLOD,
+			tempAnimPose,
+			info->extraModelLastMeshPose[extraIdx]
+		);
+
+		Preview_MapTransformsBuffer(extraDrawData);
+		Preview_MapModelInstanceBuffer(extraDrawData);
+
+		for (auto& rsrc : drawData->pixelShaderResources)
+			extraDrawData->SetPSResource(rsrc.first, rsrc.second);
+
+		drawData->childDrawDatas.push_back(extraDrawData);
+	}
+
 	for (auto& prop : info->spawnedProps)
 	{
 		if (!info->showProps)
@@ -3349,6 +3474,39 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 				propMeshWorldMatrices,
 				propWorldMatrix
 			);
+		}
+	}
+
+	for (int extraIdx = 0; extraIdx < 2; ++extraIdx)
+	{
+		if (info->extraModelGuids[extraIdx] == 0 || info->extraModelDrawDatas[extraIdx] == nullptr)
+			continue;
+
+		CPakAsset* const extraModelPak = g_assetData.FindAssetByGUID<CPakAsset>(info->extraModelGuids[extraIdx]);
+		if (!extraModelPak)
+			continue;
+		ModelAsset* const extraModelAsset = extraModelPak->extraData<ModelAsset*>();
+		if (!extraModelAsset)
+			continue;
+		ModelParsedData_t* const extraParsedData = extraModelAsset->GetParsedData();
+		if (!extraParsedData)
+			continue;
+
+		const std::vector<PreviewBonePose_t>& extraMeshPose = info->extraModelLastMeshPose[extraIdx];
+		if (extraMeshPose.empty())
+			continue;
+
+		if (info->showBones && animParsedData)
+			DrawPreviewBones(drawData, extraParsedData, extraMeshPose);
+
+		if (info->showAttachments)
+		{
+			std::vector<matrix3x4_t> extraMeshWorldMatrices;
+			BuildWorldBoneMatrices(extraParsedData->bones, extraMeshPose, extraMeshWorldMatrices);
+
+			std::vector<PreviewAttachmentWorld_t> extraAttachments;
+			BuildAttachmentWorldTransforms(extraParsedData, extraMeshWorldMatrices, extraAttachments);
+			DrawPreviewAttachments(drawData, extraAttachments);
 		}
 	}
 
