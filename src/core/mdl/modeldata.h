@@ -47,7 +47,7 @@ struct Vertex_t
 
 	Vertex_t(float x, float y, float z) : position(x, y, z), normalPacked(0), color(0xFF, 0xFF, 0xFF, 0xFF), texcoord(INFINITY, INFINITY), weightCount(0), weightIndex(0), blendData(0) {};
 
-	static bool ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra,  bool bigBones, int& weightIdx);
+	static bool ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, bool bigBones, int& weightIdx);
 
 	// Generic (basic data shared between them)
 	static void ParseVertexFromVTX(Vertex_t* const vert, Vector2D* const texcoords, ModelMeshData_t* const mesh, const vvd::mstudiovertex_t* const pVerts, const Vector4D* const pTangs, const Color32* const pColors, const Vector2D* const pUVs, const int origId);
@@ -174,16 +174,20 @@ struct ModelBone_t
 	ModelBone_t() = default;
 
 	ModelBone_t(const r1::mstudiobone_t* const bone) : baseptr(reinterpret_cast<const char* const>(bone)), name(bone->pszName()), parent(bone->parent), flags(bone->flags), proctype(bone->proctype), procindex(bone->procindex), physicsbone(bone->physicsbone), surfacepropidx(bone->surfacepropidx), contents(bone->contents),
-		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {};
+		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {
+	};
 
 	ModelBone_t(const r2::mstudiobone_t* const bone) : baseptr(reinterpret_cast<const char* const>(bone)), name(bone->pszName()), parent(bone->parent), flags(bone->flags), proctype(bone->proctype), procindex(bone->procindex), physicsbone(bone->physicsbone), surfacepropidx(bone->surfacepropidx), contents(bone->contents),
-		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {};
+		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {
+	};
 
 	ModelBone_t(const r5::mstudiobone_v8_t* const bone) : baseptr(reinterpret_cast<const char* const>(bone)), name(bone->pszName()), parent(bone->parent), flags(bone->flags), proctype(bone->proctype), procindex(bone->procindex), physicsbone(bone->physicsbone), surfacepropidx(bone->surfacepropidx), contents(bone->contents),
-		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {};
+		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {
+	};
 
 	ModelBone_t(const r5::mstudiobone_v12_1_t* const bone) : baseptr(reinterpret_cast<const char* const>(bone)), name(bone->pszName()), parent(bone->parent), flags(bone->flags), proctype(bone->proctype), procindex(bone->procindex), physicsbone(bone->physicsbone), surfacepropidx(bone->surfacepropidx), contents(bone->contents),
-		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {};
+		poseToBone(&bone->poseToBone), pos(bone->pos), quat(bone->quat), rot(bone->rot), scale(bone->scale) {
+	};
 
 	ModelBone_t(const r5::mstudiobonehdr_v16_t* const bonehdr, const r5::mstudiobonedata_v16_t* const bonedata) : baseptr(reinterpret_cast<const char* const>(bonehdr)), name(bonehdr->pszName()), parent(bonedata->parent), flags(bonedata->flags), proctype(bonedata->proctype), procindex(bonedata->procindex),
 		physicsbone(bonehdr->physicsbone), surfacepropidx(bonehdr->surfacepropidx), contents(bonehdr->contents),
@@ -517,23 +521,32 @@ class ModelParsedData_t
 public:
 	ModelParsedData_t() = default;
 	ModelParsedData_t(r1::studiohdr_t* const hdr, StudioLooseData_t* const data) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, data) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, data) {
+	};
 	ModelParsedData_t(r2::studiohdr_t* const hdr) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {
+	};
 	ModelParsedData_t(r5::studiohdr_v8_t* const hdr) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {
+	};
 	ModelParsedData_t(r5::studiohdr_v12_1_t* const hdr) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {
+	};
 	ModelParsedData_t(r5::studiohdr_v12_2_t* const hdr) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {
+	};
 	ModelParsedData_t(r5::studiohdr_v12_4_t* const hdr) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr) {
+	};
 	ModelParsedData_t(r5::studiohdr_v14_t* const hdr, const int version) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, version) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, version) {
+	};
 	ModelParsedData_t(r5::studiohdr_v16_t* const hdr, const int dataSizePhys, const int dataSizeModel) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, dataSizePhys, dataSizeModel) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, dataSizePhys, dataSizeModel) {
+	};
 	ModelParsedData_t(r5::studiohdr_v17_t* const hdr, const int dataSizePhys, const int dataSizeModel) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
-		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, dataSizePhys, dataSizeModel) {};
+		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, dataSizePhys, dataSizeModel) {
+	};
 	ModelParsedData_t(r5::studiohdr_v19_2_t* const hdr, const int dataSizePhys, const int dataSizeModel) : localSequences(nullptr), numLocalSequences(0), externalSequences(nullptr), numExternalSequences(0), externalIncludeModels(nullptr), numExternalIncludeModels(0),
 		localNodeNames(nullptr), numLocalNodes(0), poseparams(nullptr), ikchains(nullptr), iklocks(nullptr), studiohdr(hdr, dataSizePhys, dataSizeModel) {
 	};
@@ -813,7 +826,7 @@ enum eModelExportSetting : int
 	// rmdl only for now, but can support sourcemodelasset in the future
 	MODEL_STL_VALVE_PHYSICS,
 	MODEL_STL_RESPAWN_PHYSICS,
-	
+
 	MODEL_HITBOXES,
 
 	MODEL_COUNT,
@@ -825,7 +838,7 @@ static const char* s_ModelExportSettingNames[] =
 	"RMAX",
 	"RMDL",
 	"SMD",
-	"STL (Valve Physics)", 
+	"STL (Valve Physics)",
 	"STL (Respawn Physics)",
 	"OBJ (Hitboxes only)"
 };
@@ -903,9 +916,9 @@ struct PropEntity_t
 	float       spawnCycle = 0.0f;
 	bool        looping = false;
 
-	ModelParsedData_t*       cachedMeshParsedData   = nullptr;
-	const ModelParsedData_t* cachedAnimParsedData   = nullptr;
-	const ModelSeq_t*        cachedSeq              = nullptr;
+	ModelParsedData_t* cachedMeshParsedData = nullptr;
+	const ModelParsedData_t* cachedAnimParsedData = nullptr;
+	const ModelSeq_t* cachedSeq = nullptr;
 
 	std::vector<PreviewBonePose_t> lastPose;
 
@@ -947,12 +960,14 @@ struct ModelPreviewInfo_t
 	uint64_t selectedRigGuid = 0ull;
 	uint64_t selectedModelGuid = 0ull;
 	uint64_t selectedSequenceGuid = 0ull;
+	uint64_t baseSequenceGuid = 0ull;
 	uint64_t activeMeshGuid = 0ull;
 	int selectedAnimationIndex = 0;
 
 	float previewTime = 0.0f;
 	int previewFrame = 0;
 
+	bool autoSelectbaseSeq = false;
 	bool previewAnimationPlaying = true;
 	bool previewAnimationLoop = true;
 	bool showProps = true;

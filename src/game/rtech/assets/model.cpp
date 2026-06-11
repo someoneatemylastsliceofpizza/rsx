@@ -205,7 +205,7 @@ static void ParseModelVertexData_v8(CPakAsset* const asset, ModelAsset* const mo
         int curIdx = 0;
         for (auto& model : lodData.models)
         {
-            model.meshes = model.meshCount> 0 ? &lodData.meshes.at(curIdx) : nullptr;
+            model.meshes = model.meshCount > 0 ? &lodData.meshes.at(curIdx) : nullptr;
 
             curIdx += model.meshCount;
         }
@@ -288,7 +288,7 @@ static void ParseModelVertexData_v9(CPakAsset* const asset, ModelAsset* const mo
 
                 // because we resize, having a pointer to the element in the container is fine.
                 modelData.meshes = pModel->nummeshes > 0 ? &lodData.meshes.at(lodMeshCount) : nullptr;
-                
+
                 for (int meshIdx = 0; meshIdx < pModel->nummeshes; ++meshIdx)
                 {
                     const r5::mstudiomesh_v8_t* const pMesh = pModel->pMesh(meshIdx);
@@ -341,10 +341,10 @@ static void ParseModelVertexData_v9(CPakAsset* const asset, ModelAsset* const mo
 
                     memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize) * mesh->vertCount);
 #endif
-                  
+
                     meshVertexData->AddIndices(meshIndexData, meshData.indexCount);
                     meshVertexData->AddVertices(nullptr, meshData.vertCount);
-                    
+
                     if (meshData.texcoordCount > 1)
                         meshVertexData->AddTexcoords(nullptr, meshData.vertCount * (meshData.texcoordCount - 1));
 
@@ -895,9 +895,9 @@ static void ParseModelVertexData_v16(CPakAsset* const asset, ModelAsset* const m
 #if defined(ADVANCED_MODEL_PREVIEW)
                         meshData.rawVertexData = new char[mesh->vertCacheSize * mesh->vertCount]; // get a pointer to the raw vertex data for use with the game's shaders
 
-                        memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize)* mesh->vertCount);
+                        memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize) * mesh->vertCount);
 #endif
-                        
+
                         meshVertexData->AddIndices(meshIndexData, meshData.indexCount);
                         meshVertexData->AddVertices(nullptr, meshData.vertCount);
 
@@ -1120,7 +1120,7 @@ static void ParseModelVertexData_v19_2(CPakAsset* const asset, ModelAsset* const
 
                             // 19.2 has big bones
                             bool b = Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, true, weightIdx);
-                        
+
                             if (!b)
                                 Log("huh %s\n", modelAsset->name);
                         }
@@ -1478,7 +1478,7 @@ void PostLoadModelAsset(CAssetContainer* const pak, CAsset* const asset)
 
         parsedData->numExternalIncludeModels = modelAsset->numAnimRigs;
         parsedData->externalIncludeModels = modelAsset->animRigs;
-    }    
+    }
 
     // [rika]: in post load now because it depends on asqd
     switch (modelAsset->version)
@@ -1560,6 +1560,7 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.selectedRigGuid = 0ull;
         previewInfo.selectedSequenceGuid = 0ull;
         previewInfo.selectedModelGuid = 0ull;
+        previewInfo.baseSequenceGuid = 0ull;
         previewInfo.activeMeshGuid = asset->GetAssetGUID();
         previewInfo.selectedAnimationIndex = 0;
         previewInfo.previewTime = 0.0f;
@@ -1593,15 +1594,15 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.selectedRigGuid = rigOptions.front().guid;
 
     auto resolveSelectedRig = [&]() -> AnimRigAsset*
-    {
-        if (!previewInfo.selectedRigGuid)
+        {
+            if (!previewInfo.selectedRigGuid)
+                return nullptr;
+
+            if (CPakAsset* const rigAsset = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedRigGuid))
+                return rigAsset->extraData<AnimRigAsset*>();
+
             return nullptr;
-
-        if (CPakAsset* const rigAsset = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedRigGuid))
-            return rigAsset->extraData<AnimRigAsset*>();
-
-        return nullptr;
-    };
+        };
 
     AnimRigAsset* selectedRig = resolveSelectedRig();
 
@@ -1616,6 +1617,7 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         {
             previewInfo.selectedRigGuid = 0ull;
             previewInfo.selectedSequenceGuid = 0ull;
+            previewInfo.baseSequenceGuid = 0ull;
             previewInfo.selectedAnimationIndex = 0;
             previewInfo.previewTime = 0.0f;
             previewInfo.eventLastFiredFrame.clear();
@@ -1631,6 +1633,7 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
             {
                 previewInfo.selectedRigGuid = option.guid;
                 previewInfo.selectedSequenceGuid = 0ull;
+                previewInfo.baseSequenceGuid = 0ull;
                 previewInfo.selectedAnimationIndex = 0;
                 previewInfo.previewTime = 0.0f;
                 previewInfo.eventLastFiredFrame.clear();

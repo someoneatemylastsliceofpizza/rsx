@@ -287,8 +287,7 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.previewAnimationLoop = true;
         previewInfo.eventLastFiredFrame.clear();
         previewInfo.ClearSpawnedProps();
-        // Keep extraModelGuids (user selection) — only free draw datas so they
-        // reinitialise against the new rig's bone layout next frame.
+        previewInfo.baseSequenceGuid = 0ull;
         previewInfo.ClearExtraModelDrawDatas();
     }
 
@@ -322,15 +321,15 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.selectedModelGuid = modelOptions.front().guid;
 
     auto resolveSelectedModel = [&]() -> ModelAsset*
-    {
-        if (!previewInfo.selectedModelGuid)
+        {
+            if (!previewInfo.selectedModelGuid)
+                return nullptr;
+
+            if (CPakAsset* const modelPak = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedModelGuid))
+                return modelPak->extraData<ModelAsset*>();
+
             return nullptr;
-
-        if (CPakAsset* const modelPak = g_assetData.FindAssetByGUID<CPakAsset>(previewInfo.selectedModelGuid))
-            return modelPak->extraData<ModelAsset*>();
-
-        return nullptr;
-    };
+        };
 
     ModelAsset* selectedModel = resolveSelectedModel();
 
@@ -406,8 +405,7 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
             if (CPakAsset* const seqAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid))
                 selectedSequenceAsset = seqAsset->extraData<AnimSeqAsset*>();
 
-            if (selectedSequenceAsset
-                && selectedSequenceAsset->seqdesc.szactivityname != nullptr
+            if (selectedSequenceAsset && selectedSequenceAsset->seqdesc.szactivityname != nullptr
                 && strcmp(selectedSequenceAsset->seqdesc.szactivityname, "ACT_VM_WEAPON_INSPECT") == 0)
             {
                 previewInfo.selectedSequenceGuid = guid;
