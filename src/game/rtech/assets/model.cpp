@@ -59,7 +59,7 @@ static void ParseModelVertexData_v8(CPakAsset* const asset, ModelAsset* const mo
 
     // needed due to how vtx is parsed!
     CManagedBuffer* const   parseBuf = g_BufferManager.ClaimBuffer();
-
+    
     Vertex_t* const         parseVertices   = reinterpret_cast<Vertex_t*>       (parseBuf->Buffer() + maxVertexBufferSize);
     Vector2D* const         parseTexcoords  = reinterpret_cast<Vector2D*>       (&parseVertices[s_MaxStudioVerts]);
     uint16_t* const         parseIndices    = reinterpret_cast<uint16_t*>       (&parseTexcoords[s_MaxStudioVerts * 2]);
@@ -1563,6 +1563,7 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.baseSequenceGuid = 0ull;
         previewInfo.activeMeshGuid = asset->GetAssetGUID();
         previewInfo.selectedAnimationIndex = 0;
+        previewInfo.baseAnimationIndex = 0;
         previewInfo.previewTime = 0.0f;
         previewInfo.previewFrame = 0;
         previewInfo.previewAnimationPlaying = true;
@@ -1683,9 +1684,7 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
             if (CPakAsset* const seqPak = g_assetData.FindAssetByGUID<CPakAsset>(guid))
                 seqAsset = seqPak->extraData<AnimSeqAsset*>();
 
-            if (seqAsset
-                && seqAsset->seqdesc.szactivityname != nullptr
-                && strcmp(seqAsset->seqdesc.szactivityname, "ACT_VM_WEAPON_INSPECT") == 0)
+            if (seqAsset && seqAsset->seqdesc.szactivityname != nullptr && strcmp(seqAsset->seqdesc.szactivityname, "ACT_VM_WEAPON_INSPECT") == 0)
             {
                 previewInfo.selectedSequenceGuid = guid;
                 break;
@@ -1700,16 +1699,27 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
             selectedSequenceAsset = seqAsset->extraData<AnimSeqAsset*>();
     }
 
-    const char* sequenceLabel = "<none>";
-    if (selectedSequenceAsset)
-        sequenceLabel = selectedSequenceAsset->seqdesc.szlabel;
+    std::string sequenceLabelStr = "<none>";
+    if (selectedSequenceAsset && selectedSequenceAsset->seqdesc.szlabel)
+    {
+        sequenceLabelStr = selectedSequenceAsset->seqdesc.szlabel;
+        if (selectedSequenceAsset->seqdesc.flags & STUDIO_DELTA)
+            sequenceLabelStr += " [D]";
+    }
 
-    if (ImGui::BeginCombo("Sequence", sequenceLabel))
+    if (ImGui::BeginCombo("Sequence", sequenceLabelStr.c_str()))
     {
         for (const PreviewOption_t& option : sequenceOptions)
         {
             const bool isSelected = previewInfo.selectedSequenceGuid == option.guid;
-            if (ImGui::Selectable(option.label.c_str(), isSelected))
+
+            AnimSeqAsset* optSeq = nullptr;
+            if (CPakAsset* const optPak = g_assetData.FindAssetByGUID<CPakAsset>(option.guid))
+                optSeq = optPak->extraData<AnimSeqAsset*>();
+            const bool isDelta = optSeq && (optSeq->seqdesc.flags & STUDIO_DELTA) != 0;
+            const std::string itemLabel = isDelta ? option.label + " [D]" : option.label;
+
+            if (ImGui::Selectable(itemLabel.c_str(), isSelected))
             {
                 previewInfo.selectedSequenceGuid = option.guid;
                 previewInfo.selectedAnimationIndex = 0;
@@ -1727,6 +1737,9 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
     const ModelParsedData_t* const animationParsedData = selectedRig ? selectedRig->GetParsedData() : parsedData;
     const ModelSeq_t* const previewSequence = selectedSequenceAsset ? &selectedSequenceAsset->seqdesc : nullptr;
 
+    void* const previewResult = PreviewParsedData(&previewInfo, parsedData, animationParsedData, previewSequence, modelAsset->name, asset->GetAssetGUID(), asset->GetAssetGUID(), firstFrameForAsset);
+
+    // Extra Models
     struct ExtraModelOption_t { uint64_t guid; std::string label; };
     std::vector<ExtraModelOption_t> allModelOptions;
     for (auto& lookup : g_assetData.v_assets)
@@ -1817,7 +1830,7 @@ void* PreviewModelAsset(CAsset* const asset, const bool firstFrameForAsset)
         }
     }
 
-    return PreviewParsedData(&previewInfo, parsedData, animationParsedData, previewSequence, modelAsset->name, asset->GetAssetGUID(), asset->GetAssetGUID(), firstFrameForAsset);
+    return previewResult;
 }
 
 static bool ExportModelStreamedData(const ModelAsset* const modelAsset, std::filesystem::path& exportPath, const char* const streamedData, const char* const extension)

@@ -281,6 +281,7 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewInfo.selectedRigGuid = asset->GetAssetGUID();
         previewInfo.activeMeshGuid = 0ull;
         previewInfo.selectedAnimationIndex = 0;
+        previewInfo.baseAnimationIndex = 0;
         previewInfo.previewTime = 0.0f;
         previewInfo.previewFrame = 0;
         previewInfo.previewAnimationPlaying = true;
@@ -405,8 +406,7 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
             if (CPakAsset* const seqAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid))
                 selectedSequenceAsset = seqAsset->extraData<AnimSeqAsset*>();
 
-            if (selectedSequenceAsset && selectedSequenceAsset->seqdesc.szactivityname != nullptr
-                && strcmp(selectedSequenceAsset->seqdesc.szactivityname, "ACT_VM_WEAPON_INSPECT") == 0)
+            if (selectedSequenceAsset && selectedSequenceAsset->seqdesc.szactivityname != nullptr && strcmp(selectedSequenceAsset->seqdesc.szactivityname, "ACT_VM_WEAPON_INSPECT") == 0)
             {
                 previewInfo.selectedSequenceGuid = guid;
                 break;
@@ -421,16 +421,27 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
             selectedSequence = seqPak->extraData<AnimSeqAsset*>();
     }
 
-    const char* sequenceLabel = "<none>";
-    if (selectedSequence)
-        sequenceLabel = selectedSequence->seqdesc.szlabel;
+    std::string sequenceLabelStr = "<none>";
+    if (selectedSequence && selectedSequence->seqdesc.szlabel)
+    {
+        sequenceLabelStr = selectedSequence->seqdesc.szlabel;
+        if (selectedSequence->seqdesc.flags & STUDIO_DELTA)
+            sequenceLabelStr += " [D]";
+    }
 
-    if (ImGui::BeginCombo("Sequence", sequenceLabel))
+    if (ImGui::BeginCombo("Sequence", sequenceLabelStr.c_str()))
     {
         for (const PreviewOption_t& option : sequenceOptions)
         {
             const bool isSelected = previewInfo.selectedSequenceGuid == option.guid;
-            if (ImGui::Selectable(option.label.c_str(), isSelected))
+
+            AnimSeqAsset* optSeq = nullptr;
+            if (CPakAsset* const optPak = g_assetData.FindAssetByGUID<CPakAsset>(option.guid))
+                optSeq = optPak->extraData<AnimSeqAsset*>();
+            const bool isDelta = optSeq && (optSeq->seqdesc.flags & STUDIO_DELTA) != 0;
+            const std::string itemLabel = isDelta ? option.label + " [D]" : option.label;
+
+            if (ImGui::Selectable(itemLabel.c_str(), isSelected))
             {
                 previewInfo.selectedSequenceGuid = option.guid;
                 previewInfo.selectedAnimationIndex = 0;
@@ -476,6 +487,10 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         allModelOptions.push_back({ candidate->GetAssetGUID(), candidate->GetAssetName() });
     }
 
+    const ModelSeq_t* const previewSequence = selectedSequence ? &selectedSequence->seqdesc : nullptr;
+    void* const previewResult = PreviewParsedData(&previewInfo, meshParsedData, rigAsset->GetParsedData(), previewSequence, rigAsset->name, asset->GetAssetGUID(), meshGuid, firstFrameForAsset);
+
+    // Extra Models
     static char s_extraModelSearch[2][256] = { "", "" };
     static bool s_focusSearch[2] = { false, false };
 
@@ -554,8 +569,7 @@ void* PreviewAnimRigAsset(CAsset* const asset, const bool firstFrameForAsset)
         }
     }
 
-    const ModelSeq_t* const previewSequence = selectedSequence ? &selectedSequence->seqdesc : nullptr;
-    return PreviewParsedData(&previewInfo, meshParsedData, rigAsset->GetParsedData(), previewSequence, rigAsset->name, asset->GetAssetGUID(), meshGuid, firstFrameForAsset);
+    return previewResult;
 }
 
 static const char* const s_PathPrefixARIG = s_AssetTypePaths.find(AssetType_t::ARIG)->second;

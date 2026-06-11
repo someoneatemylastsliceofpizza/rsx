@@ -963,6 +963,7 @@ struct ModelPreviewInfo_t
 	uint64_t baseSequenceGuid = 0ull;
 	uint64_t activeMeshGuid = 0ull;
 	int selectedAnimationIndex = 0;
+	int baseAnimationIndex = 0;
 
 	float previewTime = 0.0f;
 	int previewFrame = 0;

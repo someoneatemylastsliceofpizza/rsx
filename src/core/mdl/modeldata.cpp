@@ -3079,15 +3079,20 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	{
 		ImGui::SeparatorText("Delta");
 
-		const char* baseLabel = "<none>";
+		std::string baseLabelStr = "<none>";
 		if (baseSeqAsset && baseSeqAsset->seqdesc.szlabel)
-			baseLabel = baseSeqAsset->seqdesc.szlabel;
+		{
+			baseLabelStr = baseSeqAsset->seqdesc.szlabel;
+			if (baseSeqAsset->seqdesc.flags & STUDIO_DELTA)
+				baseLabelStr += " [D]";
+		}
 
-		if (ImGui::BeginCombo("Base Sequence", baseLabel))
+		if (ImGui::BeginCombo("Base Sequence", baseLabelStr.c_str()))
 		{
 			const bool noneSelected = (info->baseSequenceGuid == 0ull);
 			if (ImGui::Selectable("<none>", noneSelected)) {
 				info->baseSequenceGuid = 0ull;
+				info->baseAnimationIndex = 0;
 				info->autoSelectbaseSeq = true;
 				baseSeqAsset = nullptr;
 			}
@@ -3106,12 +3111,15 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 				if (!candidateSeq)
 					continue;
 
-				const char* seqLabel = candidateSeq->seqdesc.szlabel ? candidateSeq->seqdesc.szlabel : candidate->GetAssetName().c_str();
+				const char* seqLabelRaw = candidateSeq->seqdesc.szlabel ? candidateSeq->seqdesc.szlabel : candidate->GetAssetName().c_str();
+				const bool isDeltaSeq = (candidateSeq->seqdesc.flags & STUDIO_DELTA) != 0;
+				const std::string seqLabel = isDeltaSeq ? std::string(seqLabelRaw) + " [D]" : seqLabelRaw;
 				const bool isSelected = (info->baseSequenceGuid == guid);
 
-				if (ImGui::Selectable(seqLabel, isSelected))
+				if (ImGui::Selectable(seqLabel.c_str(), isSelected))
 				{
 					info->baseSequenceGuid = guid;
+					info->baseAnimationIndex = 0;
 					CPakAsset* const newPak = g_assetData.FindAssetByGUID<CPakAsset>(guid);
 					baseSeqAsset = (newPak && newPak->hasExtraData()) ? newPak->extraData<AnimSeqAsset*>() : nullptr;
 				}
@@ -3121,6 +3129,35 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 			}
 
 			ImGui::EndCombo();
+		}
+
+		if (baseSeqAsset && baseSeqAsset->seqdesc.AnimCount() > 1)
+		{
+			info->baseAnimationIndex = std::clamp(info->baseAnimationIndex, 0, baseSeqAsset->seqdesc.AnimCount() - 1);
+
+			const ModelAnim_t* const selectedBaseAnim = baseSeqAsset->seqdesc.Anim(info->baseAnimationIndex);
+			const char* baseAnimLabel = (selectedBaseAnim && selectedBaseAnim->pszName() && selectedBaseAnim->pszName()[0])
+				? selectedBaseAnim->pszName() : "<unnamed>";
+
+			ImGui::SetNextItemWidth(-1.0f);
+			if (ImGui::BeginCombo("##BaseAnim", baseAnimLabel))
+			{
+				for (int i = 0; i < baseSeqAsset->seqdesc.AnimCount(); ++i)
+				{
+					const ModelAnim_t* const anim = baseSeqAsset->seqdesc.Anim(i);
+					const char* name = (anim && anim->pszName() && anim->pszName()[0]) ? anim->pszName() : nullptr;
+					const std::string label = name
+						? std::format("{} [{}]", name, i)
+						: std::format("<unnamed> [{}]", i);
+
+					if (ImGui::Selectable(label.c_str(), info->baseAnimationIndex == i))
+						info->baseAnimationIndex = i;
+
+					if (info->baseAnimationIndex == i)
+						ImGui::SetItemDefaultFocus();
+				}
+				ImGui::EndCombo();
+			}
 		}
 	}
 
@@ -3202,7 +3239,8 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		const ModelSeq_t* const baseSeq = &baseSeqAsset->seqdesc;
 		if (baseSeq->AnimCount() > 0)
 		{
-			const ModelAnim_t* const baseAnim = baseSeq->Anim(0);
+			const int baseAnimIdx = std::clamp(info->baseAnimationIndex, 0, baseSeq->AnimCount() - 1);
+			const ModelAnim_t* const baseAnim = baseSeq->Anim(baseAnimIdx);
 			if (EvaluateAnimationPose(baseSeq, animParsedData, baseAnim, 0, basePoseForDelta))
 				pBasePoseForDelta = &basePoseForDelta;
 		}
