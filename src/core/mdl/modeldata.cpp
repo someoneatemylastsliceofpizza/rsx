@@ -12,6 +12,7 @@
 //#include <thirdparty/imgui/imgui.h>
 #include <thirdparty/imgui/misc/imgui_utility.h>
 #include <core/render/preview/preview.h>
+#include <core/input/input.h>
 
 extern CDXParentHandler* g_dxHandler;
 extern CBufferManager g_BufferManager;
@@ -1401,7 +1402,7 @@ bool ExportModelSMD(const ModelParsedData_t* const parsedData, std::filesystem::
 		const int ibone = static_cast<int>(i);
 
 		smd->InitNode(bone.name, ibone, bone.parent);
-		smd->InitFrameBone(0, ibone, bone.pos, bone.rot);
+		smd->InitFrameBone(0, ibone, bone.pos, bone.rot, bone.scale);
 	}
 
 	// [rika]: model is skin and bones, no meat
@@ -1749,6 +1750,7 @@ bool ExportSeqDescSMD(const ModelSeq_t* const seqdesc, std::filesystem::path& ex
 
 				const Vector* pos = nullptr;
 				const Quaternion* q = nullptr;
+				const Vector* scl = nullptr;
 
 				if (flags & CAnimDataBone::ANIMDATA_POS)
 					pos = animData.GetBonePosForFrame(bone, frame);
@@ -1760,12 +1762,19 @@ bool ExportSeqDescSMD(const ModelSeq_t* const seqdesc, std::filesystem::path& ex
 				else
 					q = animdesc->flags & eStudioAnimFlags::ANIM_DELTA ? &deltaQuat : &boneData->quat;
 
+				const Vector unitScale(1.0f, 1.0f, 1.0f);
+				if (flags & CAnimDataBone::ANIMDATA_SCL)
+					scl = animData.GetBoneScaleForFrame(bone, frame);
+				else
+					scl = animdesc->flags & eStudioAnimFlags::ANIM_DELTA ? &unitScale : &boneData->scale;
+
 				assertm(pos, "should not be nullptr");
 				assertm(q, "should not be nullptr");
+				assertm(scl, "should not be nullptr");
 
 				const RadianEuler rot(*q);
 
-				smd->InitFrameBone(frame, bone, *pos, rot);
+				smd->InitFrameBone(frame, bone, *pos, rot, *scl);
 			}
 		}
 
@@ -2230,8 +2239,15 @@ namespace
 		else
 			previewUp /= std::sqrt(previewUpLengthSqr);
 
+		const bool wasAttached = g_PreviewSettings.previewUseAttachedCamera;
 		g_PreviewSettings.previewUseAttachedCamera = true;
-		g_PreviewSettings.previewFovDegrees = 110.0f;
+
+		if (!wasAttached)
+		{
+			g_PreviewSettings.previewFovDegrees = 110.0f;
+			g_dxHandler->UpdateProjectionMatrix();
+		}
+
 		g_PreviewSettings.previewAttachedCameraOriginX = previewOrigin.x;
 		g_PreviewSettings.previewAttachedCameraOriginY = previewOrigin.y;
 		g_PreviewSettings.previewAttachedCameraOriginZ = previewOrigin.z;
@@ -2241,7 +2257,6 @@ namespace
 		g_PreviewSettings.previewAttachedCameraUpX = previewUp.x;
 		g_PreviewSettings.previewAttachedCameraUpY = previewUp.y;
 		g_PreviewSettings.previewAttachedCameraUpZ = previewUp.z;
-		g_dxHandler->UpdateProjectionMatrix();
 	}
 
 	bool EvaluateAnimationPose(const ModelSeq_t* const seqdesc, const ModelParsedData_t* const skeleton, const ModelAnim_t* const animdesc, const int frameIndex, std::vector<PreviewBonePose_t>& outPose, const std::vector<PreviewBonePose_t>* basePose = nullptr)
@@ -3014,6 +3029,9 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 		if (ImGui::Button(info->previewAnimationPlaying ? " | | " : "  >  "))
 			info->previewAnimationPlaying = !info->previewAnimationPlaying;
 
+		if (ImGui::IsKeyPressed(ImGuiKey_Space) && !g_pInput->mouseCaptured)
+			info->previewAnimationPlaying = !info->previewAnimationPlaying;
+
 		ImGui::SameLine();
 		ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x - ImGui::CalcTextSize("Loop").x - ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x * 2.0f - ImGui::GetStyle().ItemInnerSpacing.x);
 		if (ImGui::SliderInt("##Frame", &info->previewFrame, 0, maxFrame, maxFrame > 0 ? "Frame %d" : "Frame 0"))
@@ -3757,7 +3775,7 @@ void* PreviewParsedData(ModelPreviewInfo_t* const info, ModelParsedData_t* const
 	for (int extraIdx = 0; extraIdx < 2; ++extraIdx)
 	{
 		CDXDrawData* extraDrawData = info->extraModelDrawDatas[extraIdx];
-		if (extraDrawData){
+		if (extraDrawData) {
 			Preview_MapTransformsBuffer(extraDrawData);
 			Preview_MapModelInstanceBuffer(extraDrawData);
 		}

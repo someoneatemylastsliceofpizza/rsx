@@ -835,6 +835,7 @@ namespace qc
 	constexpr CommandOptionDesc_t s_CommandGeneric_Option_Name(QC_OPT_STRING, "name");
 	constexpr CommandOptionDesc_t s_CommandGeneric_Option_Pos(QC_OPT_FLOAT, "pos");
 	constexpr CommandOptionDesc_t s_CommandGeneric_Option_Rot(QC_OPT_FLOAT, "rot");
+	constexpr CommandOptionDesc_t s_CommandGeneric_Option_Scale(QC_OPT_FLOAT, "scale");
 	constexpr CommandOptionDesc_t s_CommandGeneric_Option_Bone(QC_OPT_STRING, "bone");
 	constexpr CommandOptionDesc_t s_CommandGeneric_Option_BlankLine(QC_OPT_NONE, "blank", QC_FMT_NEWLINE); // just write a new line
 
@@ -1184,7 +1185,7 @@ namespace qc
 
 		const BoneData_t* const boneData = reinterpret_cast<const BoneData_t* const>(data);
 
-		const uint32_t usedOptions = boneData->UseFixups() ? 6 : 4;
+		const uint32_t usedOptions = (boneData->UseFixups() ? 6 : 4) + 1;
 		CommandOption_t* options = new CommandOption_t[usedOptions];
 
 		options[0].Init(&s_CommandGeneric_Option_Bone);
@@ -1200,18 +1201,23 @@ namespace qc
 		options[3].Init(&s_CommandGeneric_Option_Rot);
 		options[3].SavePtr(file, &angles, 3, sizeof(QAngle));
 
+		const Vector unitScale(1.0f, 1.0f, 1.0f);
+		const Vector* const scaleSrc = boneData->scale ? boneData->scale : &unitScale;
+		options[4].Init(&s_CommandGeneric_Option_Scale);
+		options[4].SavePtr(file, scaleSrc, 3, sizeof(Vector));
+
 		// [rika]: command doesn't need to have this data, write only if provided
-		if (usedOptions >= 6 && boneData->UseFixups())
+		if (usedOptions >= 7 && boneData->UseFixups())
 		{
 			Vector fixupPosition;
 			QAngle fixupAngles;
 			MatrixAngles(*boneData->fixupMatrix, fixupAngles, fixupPosition);
 
-			options[4].Init(&s_CommandDefineBone_Option_FixupPos);
-			options[4].SavePtr(file, &fixupPosition, 3, sizeof(Vector));
+			options[5].Init(&s_CommandDefineBone_Option_FixupPos);
+			options[5].SavePtr(file, &fixupPosition, 3, sizeof(Vector));
 
-			options[5].Init(&s_CommandDefineBone_Option_FixupRot);
-			options[5].SavePtr(file, &fixupAngles, 3, sizeof(QAngle));
+			options[6].Init(&s_CommandDefineBone_Option_FixupRot);
+			options[6].SavePtr(file, &fixupAngles, 3, sizeof(QAngle));
 		}
 
 		*numOptions = usedOptions;

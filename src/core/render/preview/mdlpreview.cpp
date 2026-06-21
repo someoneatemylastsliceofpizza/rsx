@@ -262,7 +262,7 @@ void Preview_Model(CDXDrawData* drawData, float dt)
 
         CShader* vertexShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("preview/prim_vs", s_PrimitiveVertexShader, eShaderType::Vertex, s_PrimitiveInputLayout, std::size(s_PrimitiveInputLayout));
         CShader* pixelShader = g_dxHandler->GetShaderManager()->LoadShaderFromString("preview/prim_ps", s_PrimitivePixelShader, eShaderType::Pixel);
-        
+
         ctx->VSSetConstantBuffers(0u, 1u, &drawData->transformsBuffer);
 
         auto iterator = drawData->debugPrims.begin();
@@ -317,9 +317,18 @@ void Preview_Model(CDXDrawData* drawData, float dt)
 
             if (wheel != 0.0f)
             {
-                const float scrollZoomFactor = ImGui::GetIO().KeyAlt ? (1.f / 5.f) : std::powf(camera->distanceToPivot, 0.6f);
-                camera->distanceToPivot -= (wheel * scrollZoomFactor);
-                camera->distanceToPivot = std::clamp(camera->distanceToPivot, 5.f, 1000.f);
+                if (g_PreviewSettings.previewUseAttachedCamera)
+                {
+                    g_PreviewSettings.previewFovDegrees -= wheel * 5.0f;
+                    g_PreviewSettings.previewFovDegrees = std::clamp(g_PreviewSettings.previewFovDegrees, 5.0f, 170.0f);
+                    g_dxHandler->UpdateProjectionMatrix();
+                }
+                else
+                {
+                    const float scrollZoomFactor = ImGui::GetIO().KeyAlt ? (1.f / 5.f) : std::powf(camera->distanceToPivot, 0.6f);
+                    camera->distanceToPivot -= (wheel * scrollZoomFactor);
+                    camera->distanceToPivot = std::clamp(camera->distanceToPivot, 5.f, 1000.f);
+                }
             }
         }
 
@@ -332,11 +341,11 @@ void Preview_Model(CDXDrawData* drawData, float dt)
         ImGui::Text("%s", fullTextSize.x > windowSize.x ? GetStringAfterLastSlash(drawData->modelName) : drawData->modelName);
 
         static bool isDraggingPivot = false;
-        if (isSceneHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
+        if (!g_PreviewSettings.previewUseAttachedCamera && isSceneHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Middle))
         {
             isDraggingPivot = true;
         }
-        if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle))
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Middle) || g_PreviewSettings.previewUseAttachedCamera)
         {
             isDraggingPivot = false;
         }
@@ -366,7 +375,7 @@ void Preview_Model(CDXDrawData* drawData, float dt)
             }
         }
 
-        const bool mouseDown = ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle);
+        const bool mouseDown = !g_PreviewSettings.previewUseAttachedCamera && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsMouseDown(ImGuiMouseButton_Middle);
         if (!g_pInput->applyMouseInput)
             g_pInput->applyMouseInput = isSceneHovered && mouseDown;
         else

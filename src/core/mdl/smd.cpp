@@ -22,6 +22,12 @@ namespace smd
 
 	void CStudioModelData::InitFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot) const
 	{
+		const Vector unitScale(1.0f, 1.0f, 1.0f);
+		InitFrameBone(iframe, ibone, pos, rot, unitScale);
+	}
+
+	void CStudioModelData::InitFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot, const Vector& scl) const
+	{
 		assertm(iframe < numFrames, "frame out of range");
 		assertm(ibone < numNodes, "node out of range");
 
@@ -31,7 +37,7 @@ namespace smd
 
 		if (ibone == boneCount)
 		{
-			frame->bones.emplace_back(ibone, pos, rot);
+			frame->bones.emplace_back(ibone, pos, rot, scl);
 
 			return;
 		}
@@ -43,6 +49,7 @@ namespace smd
 			bone.node = ibone;
 			bone.pos = pos;
 			bone.rot = rot;
+			bone.scl = scl;
 
 			return;
 		}
@@ -51,6 +58,12 @@ namespace smd
 	}
 
 	void CStudioModelData::UpdateFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot) const
+	{
+		const Vector unitScale(1.0f, 1.0f, 1.0f);
+		UpdateFrameBone(iframe, ibone, pos, rot, unitScale);
+	}
+
+	void CStudioModelData::UpdateFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot, const Vector& scl) const
 	{
 		assertm(iframe < numFrames, "frame out of range");
 		assertm(ibone < numNodes, "node out of range");
@@ -65,6 +78,7 @@ namespace smd
 		bone.node = ibone;
 		bone.pos = pos;
 		bone.rot = rot;
+		bone.scl = scl;
 
 		return;
 	}
@@ -101,7 +115,8 @@ namespace smd
 			{
 				out << "\t\t" << bone.node << " ";
 				out << bone.pos.x << " " << bone.pos.y << " " << bone.pos.z << " ";
-				out << bone.rot.x << " " << bone.rot.y << " " << bone.rot.z << "\n";
+				out << bone.rot.x << " " << bone.rot.y << " " << bone.rot.z << " ";
+				out << bone.scl.x << " " << bone.scl.y << " " << bone.scl.z << "\n";
 			}
 		}
 		out << "end\n";
@@ -227,7 +242,7 @@ namespace smd
 
 			for (const Bone& bone : frame.bones)
 			{
-				textBuffer.WriteFormatted("\t\t%i %f %f %f %f %f %f\n", bone.node, bone.pos.x, bone.pos.y, bone.pos.z, bone.rot.x, bone.rot.y, bone.rot.z);
+				textBuffer.WriteFormatted("\t\t%i %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", bone.node, bone.pos.x, bone.pos.y, bone.pos.z, bone.rot.x, bone.rot.y, bone.rot.z, bone.scl.x, bone.scl.y, bone.scl.z);
 			}
 		}
 		textBuffer.WriteString("end\n");

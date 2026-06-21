@@ -693,8 +693,8 @@ namespace qc
 
 	struct BoneData_t
 	{
-		BoneData_t(const char* const boneName, const char* const boneParent/*, const char* const boneSurface*/, const int boneContents, const int boneFlags, const Vector* const pos, const RadianEuler* const rot, const matrix3x4_t* const fixup = nullptr) : name(boneName), parent(boneParent), /*surfaceprop(boneSurface),*/
-			contents(boneContents), flags(boneFlags), position(pos), rotation(rot), fixupMatrix(fixup) { }
+		BoneData_t(const char* const boneName, const char* const boneParent/*, const char* const boneSurface*/, const int boneContents, const int boneFlags, const Vector* const pos, const RadianEuler* const rot, const matrix3x4_t* const fixup = nullptr, const Vector* const scl = nullptr) : name(boneName), parent(boneParent), /*surfaceprop(boneSurface),*/
+			contents(boneContents), flags(boneFlags), position(pos), rotation(rot), scale(scl), fixupMatrix(fixup) { }
 
 		const char* name;
 		const char* parent;
@@ -702,6 +702,7 @@ namespace qc
 
 		const Vector* position;
 		const RadianEuler* rotation;
+		const Vector* scale;
 
 		const matrix3x4_t* fixupMatrix;
 

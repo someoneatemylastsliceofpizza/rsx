@@ -29,12 +29,14 @@ namespace smd
 	class Bone
 	{
 	public:
-		Bone(const int nodeid, const Vector& position, const RadianEuler& rotation) : node(nodeid), pos(position), rot(rotation) {}
+		Bone(const int nodeid, const Vector& position, const RadianEuler& rotation) : node(nodeid), pos(position), rot(rotation), scl(1.0f, 1.0f, 1.0f) {}
+		Bone(const int nodeid, const Vector& position, const RadianEuler& rotation, const Vector& scale) : node(nodeid), pos(position), rot(rotation), scl(scale) {}
 
 		int node;
 
 		Vector pos;
 		RadianEuler rot;
+		Vector scl;
 	};
 
 	class Frame
@@ -104,7 +106,9 @@ namespace smd
 
 		void InitNode(const char* name, const int index, const int parent) const;
 		void InitFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot) const;
+		void InitFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot, const Vector& scl) const;
 		void UpdateFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot) const;
+		void UpdateFrameBone(const int iframe, const int ibone, const Vector& pos, const RadianEuler& rot, const Vector& scl) const;
 		void InitVertex(const Vertex* const vert) { vertices.emplace_back(vert); }
 		// indices local to mesh vertices
 		void InitLocalTriangle(const char* material, const uint32_t indice0, const uint32_t indice1, const uint32_t indice2)

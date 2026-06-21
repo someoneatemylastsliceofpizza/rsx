@@ -257,7 +257,7 @@ void QC_ParseStudioBone(qc::QCFile* const qc, const ModelParsedData_t* const par
 			pPostTransform = &pSrcBoneTransform->posttransform;
 	}
 
-	const BoneData_t boneData(bone->pszName(), parent/*, bone->pszSurfaceProp()*/, bone->contents, bone->flags, &bone->pos, &bone->rot, pPostTransform);
+	const BoneData_t boneData(bone->pszName(), parent/*, bone->pszSurfaceProp()*/, bone->contents, bone->flags, &bone->pos, &bone->rot, pPostTransform, &bone->scale);
 	const CommandOptionPair_t boneSurface(bone->pszName(), bone->pszSurfaceProp());
 
 	CmdParse(qc, QC_DEFINEBONE, &boneData);
@@ -1120,7 +1120,7 @@ void QC_ParseStudioSequence(qc::QCFile* const file, const ModelParsedData_t* con
 	const ModelSeq_t* const seq = info->seq;
 
 	char tmpName[MAX_PATH]{};
-	strncpy_mem(tmpName, MAX_PATH, GetStringAfterLastSlash(seq->szlabel), MAX_PATH);
+	strncpy_mem(tmpName, MAX_PATH, seq->szlabel, MAX_PATH);
 	removeExtension(tmpName);
 
 	const char* const label = file->WriteString(tmpName);
@@ -1201,6 +1201,13 @@ void QC_ParseStudioSequence(qc::QCFile* const file, const ModelParsedData_t* con
 
 	// parse nodes
 	// if either are set, both should be set
+	// NOTE: node fields are 1-based; 0 is a valid sentinel meaning "any node".
+	// Cases:
+	//   entry != 0 && exit != 0 && entry == exit       -> "node <name>"
+	//   entry != 0 && exit != 0 && nodeflags == 1      -> "rtransition <entry> <exit>"
+	//   entry != 0 && exit != 0                        -> "transition <entry> <exit>"
+	//   entry == 0 && exit != 0                        -> "Tnode <exit>"  (any -> <exit>)
+	//   entry != 0 && exit == 0                        -> "Fnode <entry>" (<entry> -> any)
 	const int localEntryNode = seq->localentrynode;
 	const int localExitNode = seq->localexitnode;
 	if (localEntryNode || localExitNode)
@@ -1277,9 +1284,8 @@ void QC_ParseStudioSequence(qc::QCFile* const file, const ModelParsedData_t* con
 					continue;
 				}
 
-				strncpy_mem(tmpName, MAX_PATH, GetStringAfterLastSlash(animSeq->seqdesc.szlabel), MAX_PATH);
+				strncpy_mem(tmpName, MAX_PATH, animSeq->seqdesc.szlabel, MAX_PATH); 
 				removeExtension(tmpName);
-
 
 				sequence = file->WriteString(tmpName);
 			}
@@ -1477,7 +1483,7 @@ bool ExportModelQC(const ModelParsedData_t* const parsedData, std::filesystem::p
 	// do $maxverts command
 	s_QCMaxVerts++;
 	assertm(s_QCMaxVerts < s_MaxStudioVerts, "invalid max vert value");
-	
+
 	constexpr int maxVertThreshold = (s_MaxStudioVerts / 3);
 	if (s_QCMaxVerts > maxVertThreshold)
 	{
