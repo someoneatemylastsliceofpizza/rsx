@@ -10,7 +10,7 @@
 #include <thirdparty/imgui/imgui.h>
 #include <thirdparty/imgui/misc/imgui_utility.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadAnimRigAsset(CAssetContainer* const container, CAsset* const asset)
 {
@@ -38,6 +38,10 @@ void LoadAnimRigAsset(CAssetContainer* const container, CAsset* const asset)
         eMDLVersion ver = pak->header()->createdTime >= s_AnimSeqTimeStamp_V12_1 ? eMDLVersion::VERSION_19_1 : eMDLVersion::VERSION_19;
 
         AnimRigAssetHeader_v5_t* const hdr = reinterpret_cast<AnimRigAssetHeader_v5_t*>(pakAsset->header());
+
+        // [rika]: model version unchanged reasonably, but animdata has changed so.
+        if (pak->header()->createdTime > s_AnimSeqTimeStamp_V13)
+            ver = eMDLVersion::VERSION_19_3;
 
         // i HAAAAATE this tool man
         if (pak->header()->createdTime > s_AnimRigTimeStamp_V7_V19_2)
@@ -113,6 +117,7 @@ void LoadAnimRigAsset(CAssetContainer* const container, CAsset* const asset)
     }
     case eMDLVersion::VERSION_19_1:
     case eMDLVersion::VERSION_19_2:
+    case eMDLVersion::VERSION_19_3:
     {
         ParseModelBoneData_v19(arigAsset->GetParsedData());
         ParseModelAttachmentData_v16(arigAsset->GetParsedData());
@@ -162,9 +167,10 @@ void PostLoadAnimRigAsset(CAssetContainer* const pak, CAsset* const asset)
             CPakAsset* const animSeqAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid);
 
             if (nullptr == animSeqAsset)
-            {
                 continue;
-            }
+
+            if (!animSeqAsset->hasExtraData())
+                continue;
 
             AnimSeqAsset* const animSeq = reinterpret_cast<AnimSeqAsset* const>(animSeqAsset->extraData());
 
@@ -227,7 +233,13 @@ void PostLoadAnimRigAsset(CAssetContainer* const pak, CAsset* const asset)
     case eMDLVersion::VERSION_19_1:
     case eMDLVersion::VERSION_19_2:
     {
-        ParseModelSequenceData_Stall_V19_1(arigAsset->GetParsedData(), reinterpret_cast<char* const>(arigAsset->data));
+        ParseModelSequenceData_Stall_V19_1(arigAsset->GetParsedData(), reinterpret_cast<char* const>(arigAsset->data), ANIM_BONEFLAG_BITS_4);
+
+        break;
+    }
+    case eMDLVersion::VERSION_19_3:
+    {
+        ParseModelSequenceData_Stall_V19_1(arigAsset->GetParsedData(), reinterpret_cast<char* const>(arigAsset->data), ANIM_BONEFLAG_BITS_6);
 
         break;
     }
@@ -584,12 +596,12 @@ bool ExportAnimRigAsset(CAsset* const asset, const int setting)
     assertm(animRigAsset->name, "No name for anim rig.");
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path rigPath(animRigAsset->name);
     const std::string rigStem(rigPath.stem().string());
 
     // truncate paths?
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(rigPath.parent_path().string());
     else
         exportPath.append(std::format("{}/{}", s_PathPrefixARIG, rigStem));
@@ -602,13 +614,13 @@ bool ExportAnimRigAsset(CAsset* const asset, const int setting)
 
     const ModelParsedData_t* const parsedData = &animRigAsset->parsedData;
 
-    if (g_ExportSettings.exportRigSequences && animRigAsset->numAnimSeqs > 0)
+    if (g_rsxSettings.exportRigSequences && animRigAsset->numAnimSeqs > 0)
     {
         if (!ExportAnimSeqFromAsset(exportPath, rigStem, animRigAsset->name, animRigAsset->numAnimSeqs, animRigAsset->animSeqs, animRigAsset->GetRig()))
             return false;
     }
 
-    if (g_ExportSettings.exportRigSequences && parsedData->NumLocalSeq() > 0)
+    if (g_rsxSettings.exportRigSequences && parsedData->NumLocalSeq() > 0)
     {
         std::filesystem::path outputPath(exportPath);
         outputPath.append(std::format("anims_{}/temp", rigStem));

@@ -94,7 +94,7 @@
     #define ASSERTS
     #define PAKLOAD_DEBUG_LOG 1
 #else
-    #define SPLASHSCREEN
+    //#define SPLASHSCREEN
     #define EXCEPTION_HANDLER
     #define PAKLOAD_DEBUG_LOG 0
 #endif // #ifdef _DEBUG
@@ -132,3 +132,12 @@
 #else
 #define IS_NOGUI(cli) ((cli) && (cli)->HasParam("-nogui"))
 #endif
+
+#define DO_ASSET_LOAD() !g_assetData.m_validate || g_assetData.m_validateAssetLoading
+
+
+#define CONCAT(a, b) XCONCAT(a, b)
+#define XCONCAT(a, b) a ## b
+#define UNIQUE_VAR() CONCAT(__unique_, __COUNTER__)
+
+#include "core/features.h"

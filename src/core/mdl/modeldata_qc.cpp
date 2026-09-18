@@ -10,7 +10,7 @@
 #include <thirdparty/imgui/misc/imgui_utility.h>
 
 extern CBufferManager g_BufferManager;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 // get the used material indices for skins
 // todo: move to qc
@@ -167,7 +167,7 @@ void QC_ParseStudioHeader(qc::QCFile* const qc, const ModelParsedData_t* const p
 		const char** materialFullPaths = nullptr;
 
 		// if we are going to rename materials
-		if (g_ExportSettings.exportModelMatsTruncated)
+		if (g_rsxSettings.exportModelMatsTruncated)
 		{
 			materialFullPaths = new const char* [pStudioHdr->numSkinRef] {};
 		}
@@ -177,7 +177,7 @@ void QC_ParseStudioHeader(qc::QCFile* const qc, const ModelParsedData_t* const p
 			materials[i] = parsedData->pMaterial(i)->GetName(true);
 
 			// are the materials getting shortened ?
-			if (!g_ExportSettings.exportModelMatsTruncated)
+			if (!g_rsxSettings.exportModelMatsTruncated)
 				continue;
 
 			assertm(materialFullPaths, "material path array was not allocated");
@@ -211,7 +211,7 @@ void QC_ParseStudioHeader(qc::QCFile* const qc, const ModelParsedData_t* const p
 			FreeAllocArray(names);
 		}
 
-		if (g_ExportSettings.exportModelMatsTruncated)
+		if (g_rsxSettings.exportModelMatsTruncated)
 		{
 			for (int i = 0; i < pStudioHdr->numSkinRef; i++)
 			{
@@ -1555,11 +1555,11 @@ bool ExportModelQC(const ModelParsedData_t* const parsedData, std::filesystem::p
 
 	// get version from settings
 	Version_t qcTargetVersion;
-	qcTargetVersion.SetVersion(static_cast<MajorVersion_t>(g_ExportSettings.qcMajorVersion), g_ExportSettings.qcMinorVersion);
+	qcTargetVersion.SetVersion(static_cast<MajorVersion_t>(g_rsxSettings.qcMajorVersion), g_rsxSettings.qcMinorVersion);
 
 	// export qc file
 	QCFile::SetExportVersion(qcTargetVersion);
-	qcFile.ParseToText(g_ExportSettings.exportQCIFiles);
+	qcFile.ParseToText(g_rsxSettings.exportQCIFiles);
 
 	g_BufferManager.RelieveBuffer(buf);
 #else
@@ -1619,11 +1619,11 @@ bool ExportSeqQC(const ModelParsedData_t* const parsedData, const ModelSeq_t* co
 
 	// get version from settings
 	Version_t qcTargetVersion;
-	qcTargetVersion.SetVersion(static_cast<MajorVersion_t>(g_ExportSettings.qcMajorVersion), g_ExportSettings.qcMinorVersion);
+	qcTargetVersion.SetVersion(static_cast<MajorVersion_t>(g_rsxSettings.qcMajorVersion), g_rsxSettings.qcMinorVersion);
 
 	// export qc file
 	QCFile::SetExportVersion(qcTargetVersion);
-	qcFile.ParseToText(g_ExportSettings.exportQCIFiles);
+	qcFile.ParseToText(g_rsxSettings.exportQCIFiles);
 
 	g_BufferManager.RelieveBuffer(buf);
 

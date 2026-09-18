@@ -335,22 +335,11 @@ namespace vg
 		inline const uint16_t ExtraWeightsStartIndex() const { return weight[1]; }
 	};
 
-	struct BlendWeightIndicesPacked_s
-	{
-		// (1 << 10) bones! (1024)
-		uint32_t firstBone : 10;
-		uint32_t lastBone : 10;
-		uint32_t unk : 4;
-		uint32_t boneCount : 8;
-	};
-
 	// Templated to the number of bits for each complex bone index
 	struct BlendWeightIndices_s
 	{
 		uint8_t bone[3];	// when the model doesn't have extra bone weights all three are used for bone indices, otherwise in order they will be used for: first bone, last bone (assumes vvd->vg), unused.
 		uint8_t boneCount;	// number of bones this vertex is weighted to excluding the base weight (value of 0 if only one weight, max of 15 with 16 weights)
-	
-		const BlendWeightIndicesPacked_s* Packed() const { return reinterpret_cast<const BlendWeightIndicesPacked_s*>(this); };
 		
 		uint8_t operator[](int i)
 		{
@@ -358,6 +347,23 @@ namespace vg
 
 			return reinterpret_cast<uint8_t*>(this)[i];
 		}
+	};
+
+	struct BlendWeightExtraIndices_256_s
+	{
+		uint32_t firstBone : 8;
+		uint32_t lastBone : 8;
+		uint32_t unk : 8;
+		uint32_t boneCount : 8;
+	};
+
+	struct BlendWeightExtraIndices_1024_s
+	{
+		// (1 << 10) bones! (1024)
+		uint32_t firstBone : 10;
+		uint32_t lastBone : 10;
+		uint32_t unk : 4;
+		uint32_t boneCount : 8;
 	};
 
 	struct Vertex_t
@@ -1217,6 +1223,24 @@ inline const char* StudioContentFlagString(const int contents)
 	case CONTENTS_WATER:
 	{
 		return "water";
+	}
+	case CONTENTS_PLAYERCLIP:
+	{
+		// models/levels_terrain\mp_relic\mp_relic_ship_engine_collision.mdl (r1)
+		// how do I even know what the proper text for this would be?
+		return "playerclip";
+	}
+	case CONTENTS_TITANCLIP:
+	{
+		// models/levels_terrain\mp_relic\mp_relic_ship_engine_collision.mdl (r1)
+		// how do I even know what the proper text for this would be?
+		return "titanclip";
+	}
+	case CONTENTS_BULLETCLIP:
+	{
+		// models/imc_base\chain_link_imc_01.mdl (r1)
+		// how do I even know what the proper text for this would be?
+		return "bulletclip";
 	}
 	case CONTENTS_MONSTER:
 	{

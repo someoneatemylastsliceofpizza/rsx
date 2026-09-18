@@ -1,7 +1,7 @@
 #include "pch.h"
 #include <game/rtech/assets/weapon_definition.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadWeaponDefinitionAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -72,13 +72,13 @@ bool ExportWeaponDefinitionAsset(CAsset* const asset, const int setting)
     const std::string wepnTxt = R_GetWeaponDefinitionAsString(header->rootKey, "");
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path wepnPath(asset->GetAssetName());
 
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(wepnPath.parent_path().string());
     else
-        exportPath.append("weapon/");
+        exportPath.append("weapon");
 
     if (!CreateDirectories(exportPath))
     {

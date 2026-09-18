@@ -7,7 +7,7 @@
 
 extern CDXParentHandler* g_dxHandler;
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadShaderAsset(CAssetContainer* pak, CAsset* asset)
 {
@@ -75,6 +75,7 @@ void LoadShaderAsset(CAssetContainer* pak, CAsset* asset)
 		break;
 	}
 	case 19: // man idfk
+	case 21:
 	{
 		// [rika]: there's some where shaders in newer versions that don't have cpu data, and point to places that don't really have a shader header
 		ShaderAssetHeader_v14_t* hdr = reinterpret_cast<ShaderAssetHeader_v14_t*>(pakAsset->header());
@@ -453,7 +454,7 @@ void PostLoadShaderAsset(CAssetContainer* const pak, CAsset* const asset)
 
 	}
 
-#if defined(ADVANCED_MODEL_PREVIEW) // saves some memory and loading time if we don't create these when AMP is not enabled
+#if (ADVANCED_MODEL_PREVIEW) // saves some memory and loading time if we don't create these when AMP is not enabled
 	HRESULT hr = E_INVALIDARG;
 
 	switch (shaderAsset->type)
@@ -707,10 +708,10 @@ bool ExportShaderAsset(CAsset* const asset, const int setting)
 	}
 
 	// Create exported path + asset path.
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+	std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
 	const std::filesystem::path shaderPath(asset->GetAssetName());
 
-	if (g_ExportSettings.exportPathsFull)
+	if (g_rsxSettings.exportPathsFull)
 		exportPath.append(shaderPath.parent_path().string());
 	else
 		exportPath.append(s_PathPrefixSHDR);

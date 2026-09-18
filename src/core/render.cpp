@@ -27,9 +27,13 @@
 #include <regex>
 #include <directxtex/DirectXTex.h>
 
+#include <core/utils/gamefinder.h>
+#include <misc/ImGuiNotify.hpp>
+#include <imgui/implot/implot.h>
+
 extern CDXParentHandler* g_dxHandler;
 extern std::atomic<uint32_t> g_maxConcurrentThreadCount;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 PreviewSettings_t g_PreviewSettings {
     .previewCullDistance = PREVIEW_CULL_DEFAULT,
@@ -111,6 +115,7 @@ void ColouredTextForAssetType(const CAsset* const asset)
     case CAsset::ContainerType::AUDIO:
     case CAsset::ContainerType::MDL:
     case CAsset::ContainerType::BP_PAK:
+    case CAsset::ContainerType::VPK:
     {
         const AssetType_t assetType = static_cast<AssetType_t>(asset->GetAssetType());
         if (s_AssetTypeColours.contains(assetType))
@@ -243,7 +248,7 @@ void PreviewWnd_AssetDepsTbl(CAsset* asset)
                         ImGui::BeginDisabled();
 
                     if (ImGui::Button("Export"))
-                        CThread(HandleExportBindingForAsset, depAsset, g_ExportSettings.exportAssetDeps).detach();
+                        CThread(HandleExportBindingForAsset, depAsset, g_rsxSettings.exportAssetDeps).detach();
 
                     if (!depAsset)
                         ImGui::EndDisabled();
@@ -366,7 +371,7 @@ void PreviewWnd_AssetParentsTbl(CAsset* asset)
                 {
                     ImGui::AlignTextToFramePadding();
                     if (ImGui::Button("Export"))
-                        CThread(HandleExportBindingForAsset, parentAsset, g_ExportSettings.exportAssetDeps).detach();
+                        CThread(HandleExportBindingForAsset, parentAsset, g_rsxSettings.exportAssetDeps).detach();
                 }
 
                 ImGui::PopID();
@@ -386,15 +391,21 @@ void SettingsWnd_Draw(CUIState* uiState)
     ImGui::SetNextWindowSize(ImVec2(0.f, 500.f), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Settings", &uiState->settingsWindowVisible, ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse))
     {
+        ImGui::SeparatorText("General");
 #if !defined(_DEBUG) && !defined(NO_LIBCURL)
         // ===============================================================================================================
-        ImGui::SeparatorText("General");
 
         ImGui::Checkbox("Check for updates", &UtilsConfig->checkForUpdates);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("RSX will check for updates against the GitHub repository when opened.\nIf there is a new update available, a message will be displayed on the RSX welcome dialog box");
 #endif
-        
+
+#if HAS_BRIDGE
+        ImGui::InputScalar("RSX Bridge Port##BridgePortNum", ImGuiDataType_U16, reinterpret_cast<uint16_t*>(&g_rsxSettings.bridgePort), nullptr, nullptr, "%u", ImGuiInputTextFlags_CharsDecimal);
+        ImGui::SameLine();
+        ImGuiExt::HelpMarker("The UDP port that RSX listens to for Bridge requests. RSX must be restarted for changes to take effect.");
+#endif
+
         // ===============================================================================================================
 		ImGui::SeparatorText("Search");
 
@@ -404,60 +415,67 @@ void SettingsWnd_Draw(CUIState* uiState)
 
         ImGui::SeparatorText("Export");
 
-        ImGui::Checkbox("Export full asset paths", &g_ExportSettings.exportPathsFull);
+        ImGui::Checkbox("Export full asset paths", &g_rsxSettings.exportPathsFull);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables exporting of assets to their full path within the export directory, as shown by the listed asset names.\nWhen disabled, assets will be exported into the root-level of a folder named after the asset's type (e.g. \"material/\",\"ui_image/\").");
 
-        ImGui::Checkbox("Export asset dependencies", &g_ExportSettings.exportAssetDeps);
+        ImGui::Checkbox("Export asset dependencies", &g_rsxSettings.exportAssetDeps);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables exporting of all dependencies that are associated with any asset that is being exported.");
 
-        ImGui::Checkbox("Disable CacheDB loading", &g_ExportSettings.disableCachedNames);
+        ImGui::Checkbox("Disable CacheDB loading", &g_rsxSettings.disableCachedNames);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Disables loading names from the cache file. The cache will still be updated, but RSX will not display any cached data");
 
         // texture settings
         ImGui::SeparatorText("Export (Textures)");
 
-        ImGui::Combo("Material Texture Naming", reinterpret_cast<int*>(&g_ExportSettings.exportTextureNameSetting), s_TextureExportNameSetting, static_cast<int>(ARRAYSIZE(s_TextureExportNameSetting)));
+        ImGui::Combo("Material Texture Naming", reinterpret_cast<int*>(&g_rsxSettings.exportTextureNameSetting), s_TextureExportNameSetting, static_cast<int>(ARRAYSIZE(s_TextureExportNameSetting)));
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Naming scheme for exporting textures via materials options are as follows:\nGUID: exports only using the asset's GUID as a name.\nReal: exports texture using a real name (asset name or guid if no name).\nText: exports the texture with a text name always, generating one if there is none provided.\nSemantic: exports with a generated name all the time, useful for models.");
 
-        ImGui::Combo("Normal Recalculation", reinterpret_cast<int*>(&g_ExportSettings.exportNormalRecalcSetting), s_NormalExportRecalcSetting, static_cast<int>(ARRAYSIZE(s_NormalExportRecalcSetting)));
+        ImGui::Combo("Normal Recalculation", reinterpret_cast<int*>(&g_rsxSettings.exportNormalRecalcSetting), s_NormalExportRecalcSetting, static_cast<int>(ARRAYSIZE(s_NormalExportRecalcSetting)));
         ImGui::SameLine();
         ImGuiExt::HelpMarker("None: exports the normal as it is stored.\nDirectX: exports with a generated blue channel.\nOpenGL: exports with a generated blue channel and inverts the green channel.");
 
-        ImGui::Checkbox("Export Material Textures", &g_ExportSettings.exportMaterialTextures);
+        ImGui::Checkbox("Export Material Textures", &g_rsxSettings.exportMaterialTextures);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables exporting of all textures that are associated with any material asset that is being exported.");
 
         // model settings
         ImGui::SeparatorText("Export (Models)");
 
-        ImGui::Checkbox("Export Sequences", &g_ExportSettings.exportRigSequences);
+        ImGui::Checkbox("Export Sequences", &g_rsxSettings.exportRigSequences);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables exporting of all animation sequences that are associated with any rig or model asset that is being exported.");
 
-        ImGui::Checkbox("Export Anim Data (.asqd)", &g_ExportSettings.exportSeqAnimData);
+        ImGui::Checkbox("Export Anim Data (.asqd)", &g_rsxSettings.exportSeqAnimData);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables automatic exporting of ASQD files along with RSEQ.");
 
-        ImGui::Checkbox("Export Skin", &g_ExportSettings.exportModelSkin);
+        ImGui::Checkbox("Export Skin", &g_rsxSettings.exportModelSkin);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Enables exporting a model with the previewed skin.");
 
-        ImGui::Checkbox("Truncate Materials", &g_ExportSettings.exportModelMatsTruncated);
+        ImGui::Checkbox("Truncate Materials", &g_rsxSettings.exportModelMatsTruncated);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Truncates material names on SMD.");
 
-        ImGui::Checkbox("Enable QCI Files", &g_ExportSettings.exportQCIFiles);
+        ImGui::Checkbox("Enable QCI Files", &g_rsxSettings.exportQCIFiles);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("QC file will be split into multiple include files.");
 
+        // hidden for now
+        //ImGui::SeparatorText("Export (Wrapped Files)");
+
+        //ImGui::Checkbox("Use original script extensions", &g_rsxSettings.useOrigScriptExportExtensions);
+        //ImGui::SameLine();
+        //ImGuiExt::HelpMarker("Enables the usage of the game's original script file extensions. e.g., .nut.ui instead of .ui.nut");
+
         ImGui::PushItemWidth(48.0f);
-        ImGui::InputScalar("##QCTargetMajor", ImGuiDataType_U16, reinterpret_cast<uint16_t*>(&g_ExportSettings.qcMajorVersion), nullptr, nullptr, "%u", ImGuiInputTextFlags_CharsDecimal);
+        ImGui::InputScalar("##QCTargetMajor", ImGuiDataType_U16, reinterpret_cast<uint16_t*>(&g_rsxSettings.qcMajorVersion), nullptr, nullptr, "%u", ImGuiInputTextFlags_CharsDecimal);
         ImGui::SameLine();
-        ImGui::InputScalar("##QCTargetMinor", ImGuiDataType_U16, reinterpret_cast<uint16_t*>(&g_ExportSettings.qcMinorVersion), nullptr, nullptr, "%u", ImGuiInputTextFlags_CharsDecimal);
+        ImGui::InputScalar("##QCTargetMinor", ImGuiDataType_U16, reinterpret_cast<uint16_t*>(&g_rsxSettings.qcMinorVersion), nullptr, nullptr, "%u", ImGuiInputTextFlags_CharsDecimal);
         ImGui::PopItemWidth();
         ImGui::SameLine();
         ImGui::Text("QC Target Version");
@@ -465,15 +483,15 @@ void SettingsWnd_Draw(CUIState* uiState)
         ImGuiExt::HelpMarker("Desired version for QC files to be compatible with.");
 
         // physics settings
-        ImGui::InputInt("Physics contents filter", reinterpret_cast<int*>(&g_ExportSettings.exportPhysicsContentsFilter), 1, 100, ImGuiInputTextFlags_CharsHexadecimal);
+        ImGui::InputInt("Physics contents filter", reinterpret_cast<int*>(&g_rsxSettings.exportPhysicsContentsFilter), 1, 100, ImGuiInputTextFlags_CharsHexadecimal);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Filter physics meshes in or out based on selected contents.");
 
-        ImGui::Checkbox("Physics contents filter exclusive", &g_ExportSettings.exportPhysicsFilterExclusive);
+        ImGui::Checkbox("Physics contents filter exclusive", &g_rsxSettings.exportPhysicsFilterExclusive);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Exclude physics meshes containing any of the specified contents.");
 
-        ImGui::Checkbox("Physics contents filter require all", &g_ExportSettings.exportPhysicsFilterAND);
+        ImGui::Checkbox("Physics contents filter require all", &g_rsxSettings.exportPhysicsFilterAND);
         ImGui::SameLine();
         ImGuiExt::HelpMarker("Filter only physics meshes containing all specified contents.");
 
@@ -502,13 +520,63 @@ void SettingsWnd_Draw(CUIState* uiState)
         ImGuiExt::HelpMarker("Distance at which render of 3D objects will stop.");
 
         // ===============================================================================================================
-        ImGui::SeparatorText("Export Formats");
+        ImGui::SeparatorText("Asset Settings");
 
         for (auto& [fourCC, binding] : g_assetData.m_assetTypeBindings)
         {
             if (binding.e.exportSettingArr)
             {
-                ImGui::Combo(fourCCToString(fourCC).c_str(), &binding.e.exportSetting, binding.e.exportSettingArr, static_cast<int>(binding.e.exportSettingArrSize));
+                bool colouredText = false;
+                const AssetType_t assetType = static_cast<AssetType_t>(fourCC);
+                if (s_AssetTypeColours.contains(assetType))
+                {
+                    colouredText = true;
+
+                    const Color4& col = s_AssetTypeColours.at(assetType);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(col.r, col.g, col.b, col.a));
+                }
+                ImGui::SeparatorText(std::format("{} ({})", binding.name, fourCCToString(fourCC, true)).c_str());
+
+                if (colouredText) ImGui::PopStyleColor();
+
+                // Prevent the asset status from being toggled while files are loading, as this could cause some serious inconsistencies
+                // if changed while assets are already being processed.
+                // This setting must also not be changed while files are already opened, as otherwise RSX may attempt to preview an asset
+                // that has not been loaded
+                ImGui::BeginDisabled(inJobAction || g_assetData.v_assetContainers.size() != 0);
+
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 25.f);
+                ImGui::Checkbox(std::format("Load Asset Type##_{}", binding.name).c_str(), &binding._loadAssetType);
+
+                ImGui::EndDisabled();
+
+                ImGui::SameLine();
+                ImGuiExt::HelpMarker("This setting determines whether this asset type should be processed by RSX when loading asset files.\n\nIMPORTANT: This setting can only be changed before selecting pak files to open.");
+
+
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 25.f);
+                ImGui::TextUnformatted("Format"); ImGui::SameLine();
+
+                ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 25.f);
+                ImGui::Combo(std::format("##ExportFormat_{}", binding.name).c_str(), &binding.e.exportSetting, binding.e.exportSettingArr, static_cast<int>(binding.e.exportSettingArrSize));
+            
+                if (auto settingsIt = g_rsxSettings.assetSettings.find(fourCC); settingsIt != g_rsxSettings.assetSettings.end())
+                {
+                    std::vector<UISetting_t>& vec = settingsIt->second;
+
+                    for (auto& setting : vec)
+                    {
+                        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + 25.f);
+                        switch (setting.valueType)
+                        {
+                        case UISettingType_e::TYPE_BOOL:
+                        {
+                            ImGui::Checkbox(setting.displayName, &setting.rawValue.boolVal);
+                            break;
+                        }
+                        }
+                    }
+                }
             }
         }
     }
@@ -549,55 +617,52 @@ void ApplySelectionRequests(ImGuiMultiSelectIO* ms_io, std::deque<CAsset*>& sele
     }
 }
 
-void MainWnd_MenuBar()
+// Reset the load state of the UI so that we can prepare to un/load a new set of files
+void ClearLoadState()
+{
+    s_selectedAssets.clear();
+    s_filteredAssets.clear();
+    s_prevRenderInfoAsset = nullptr;
+    g_assetData.ClearAssetData();
+    g_dxHandler->GetUIState().ClearAssetData();
+}
+
+static void ShowOpenFileDialog()
+{
+    ClearLoadState();
+
+    CThread(HandleOpenFileDialog, g_dxHandler->GetWindowHandle()).detach();
+}
+
+#define LOADING_TOOLTIP() if (inJobAction) ImGui::SetItemTooltip("Unable to open new files while file loading is still in progress")
+
+static void MainWnd_MenuBar()
 {
     if (ImGui::BeginMainMenuBar())
     {
-        CUIState& uiState = g_dxHandler->GetUIState();
         if (ImGui::BeginMenu("File"))
         {
-            if (ImGui::MenuItem("Open"))
+            if (ImGui::MenuItem("Open", "CTRL+O", false, !inJobAction))
+                ShowOpenFileDialog();
+            LOADING_TOOLTIP();
+
+            if (ImGui::MenuItem("Unload Files", "CTRL+W", false, !inJobAction))
             {
-                if (!inJobAction)
-                {
-                    s_selectedAssets.clear();
-                    s_filteredAssets.clear();
-                    s_prevRenderInfoAsset = nullptr;
-                    g_assetData.ClearAssetData();
-                    uiState.ClearAssetData();
+                if (g_assetData.v_assets.size() > 0)
+                    g_assetData.Log_Info(nullptr, "Unloaded %lld asset%s from %lld container file%s", g_assetData.v_assets.size(), g_assetData.v_assets.size() == 1 ? "" : "s", g_assetData.v_assetContainers.size(), g_assetData.v_assetContainers.size() == 1 ? "" : "s");
 
-                    // We kinda leak the thread here but it's okay, we want it to keep executing.
-                    CThread(HandleOpenFileDialog, g_dxHandler->GetWindowHandle()).detach();
-                }
+                ClearLoadState();
             }
-
-            if (ImGui::MenuItem("Unload Files"))
-            {
-                if (!inJobAction)
-                {
-                    if (g_assetData.v_assets.size() > 0)
-                        g_assetData.Log_Info(nullptr, "Unloaded %lld asset%s from %lld container file%s", g_assetData.v_assets.size(), g_assetData.v_assets.size() == 1 ? "" : "s", g_assetData.v_assetContainers.size(), g_assetData.v_assetContainers.size() == 1 ? "" : "s");
-
-                    s_selectedAssets.clear();
-                    s_filteredAssets.clear();
-                    s_prevRenderInfoAsset = nullptr;
-                    g_assetData.ClearAssetData();
-                    uiState.ClearAssetData();
-                }
-            }
+            LOADING_TOOLTIP();
 
             ImGui::EndMenu();
         }
 
         if (ImGui::BeginMenu("Edit"))
         {
+            CUIState& uiState = g_dxHandler->GetUIState();
             if (ImGui::MenuItem("Settings"))
                 uiState.ShowSettingsWindow(true);
-
-#if defined(HAS_ITEMFLAV_WINDOW)
-            if (ImGui::MenuItem("Itemflavors"))
-                uiState.ShowItemflavWindow(true);
-#endif
 
             if (ImGui::MenuItem("Logs"))
                 uiState.ShowLogWindow(true);
@@ -622,11 +687,76 @@ void MainWnd_MenuBar()
         ImGui::EndMainMenuBar();
     }
 }
+#undef LOADING_TOOLTIP
 
-void MainWnd_WelcomeBox()
+extern void HandlePakLoad(std::vector<std::string> filePaths);
+
+static void MainWnd_LaunchSkinFinderForGame(const std::filesystem::path& dirPath, GameFinderGame_e gameType)
 {
-    if (!inJobAction && g_assetData.v_assetContainers.empty())
+    if (gameType == GameFinderGame_e::APEX_LEGENDS)
     {
+        const std::vector<std::string> filePaths = {
+            (dirPath / "paks/Win64/localization_english.rpak").string(),
+            (dirPath / "paks/Win64/common_early.rpak").string(),
+            (dirPath / "paks/Win64/common.rpak").string(),
+            (dirPath / "paks/Win64/ui.rpak").string(),
+        };
+
+        CThread([](const std::vector<std::string> filePaths) {
+            inJobAction = true;
+
+            ClearLoadState();
+
+            HandlePakLoad(std::move(filePaths));
+            g_assetData.ProcessAssetsPostLoad();
+
+            inJobAction = false;
+        }, std::move(filePaths)).detach();
+    }
+    else if (gameType == GameFinderGame_e::TITANFALL_2)
+    {
+        const std::vector<std::string> filePaths = {
+            (dirPath / "r2/paks/Win64/common.rpak").string(),
+        };
+
+        CThread([](const std::vector<std::string> filePaths) {
+            inJobAction = true;
+
+            ClearLoadState();
+
+            HandlePakLoad(std::move(filePaths));
+            g_assetData.ProcessAssetsPostLoad();
+
+            inJobAction = false;
+            }, std::move(filePaths)).detach();
+    }
+};
+
+#define SHOW_WELCOME_BOX (!inJobAction && g_assetData.v_assetContainers.empty())
+
+static void MainWnd_WelcomeBox()
+{
+    // Don't bother showing the welcome box if we're in file load. We can't do shit anyway...
+    if (inJobAction)
+        return;
+
+    static bool firstTimeWelcoming = true;
+    static GameFinderResults_s gfResults = {};
+    static int64_t selectedGameDirectoryIdx = -1;
+    if (SHOW_WELCOME_BOX)
+    {
+        // There's no point in rediscovering the game installations if the user loads files and then unloads them, since
+        // it's incredibly unlikely that in that time they have un/installed a new compatible game, and doing this minimises
+        // registry/FS accesses
+        if (firstTimeWelcoming)
+        {
+            GameFinder_FindAllCompatibleEAGames(&gfResults);
+            GameFinder_FindAllCompatibleSteamGames(&gfResults);
+
+
+            firstTimeWelcoming = false;
+        }
+
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
 
         ImGui::SetNextWindowSize(ImVec2(600, 0), ImGuiCond_Always);
@@ -641,15 +771,91 @@ void MainWnd_WelcomeBox()
             ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f);
 
             if (ImGui::Button("Open File..."))
-            {
-                // Reset selected asset to avoid crash.
-                s_selectedAssets.clear();
-                s_filteredAssets.clear();
-                s_prevRenderInfoAsset = nullptr;
-                g_assetData.ClearAssetData();
+                ShowOpenFileDialog();
 
-                // We kinda leak the thread here but it's okay, we want it to keep executing.
-                CThread(HandleOpenFileDialog, g_dxHandler->GetWindowHandle()).detach();
+            if (gfResults.gameDescriptors.size() > 0)
+            {
+                ImGui::Separator();
+                ImGui::TextUnformatted("Compatible Game Installations");
+
+                if (ImGui::BeginTable("Assets", 2, ImGuiTableFlags_BordersOuter))
+                {
+                    ImGui::TableSetupColumn("", ImGuiTableColumnFlags_WidthFixed, 0, 0);
+                    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthFixed, 0, 1);
+
+                    ImGui::TableSetupScrollFreeze(0, 1);
+                    ImGui::TableHeadersRow();
+
+                    int i = 0;
+                    for (GameFinderResults_s::GameDescriptor_s& gameDescriptor : gfResults.gameDescriptors)
+                    {
+                        ImGui::PushID(i);
+                        ImGui::TableNextRow();
+
+                        // eventually this will also support EA app as well as steam so this needs its own column
+                        if (ImGui::TableSetColumnIndex(0))
+                        {
+                            switch (gameDescriptor.gameDistributionPlatform)
+                            {
+                            case GameDistributionPlatform_e::STEAM:
+                            {
+                                ImGui::TextUnformatted("Steam");
+                                break;
+                            }
+                            case GameDistributionPlatform_e::EA:
+                            {
+                                ImGui::TextUnformatted("EA");
+                                break;
+                            }
+                            }
+                        }
+
+                        if (ImGui::TableSetColumnIndex(1))
+                        {
+                            const bool selected = selectedGameDirectoryIdx == i;
+                            if (ImGui::Selectable(gameDescriptor.gamePath.string().c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+                                selectedGameDirectoryIdx = i;
+                        }
+
+                        ImGui::PopID();
+
+                        i++;
+                    }
+
+                    ImGui::EndTable();
+                };
+
+                if (selectedGameDirectoryIdx != -1)
+                {
+                    GameFinderResults_s::GameDescriptor_s* const gameDescriptor = &gfResults.gameDescriptors[selectedGameDirectoryIdx];
+
+                    const char* buttonLabel = "Open";
+                    switch (gameDescriptor->gameType)
+                    {
+                    case GameFinderGame_e::TITANFALL_1: // wait r1 doesn't have rpaks... good thing the gamefinder doesn't search for r1 yet!
+                    case GameFinderGame_e::TITANFALL_2:
+                        buttonLabel = "Open common.rpak";
+                        break;
+                    case GameFinderGame_e::APEX_LEGENDS:
+                        buttonLabel = "Open Skin Finder";
+                        break;
+                    }
+
+                    ImGui::SetCursorPosY(ImGui::GetCursorPosY() + 5.f);
+                    if (ImGui::Button(buttonLabel))
+                    {
+                        if (gameDescriptor->gameType == GameFinderGame_e::APEX_LEGENDS)
+                        {
+                            g_assetData.AddPostLoadFinishedCallback([]() {
+                                CThread([]() {
+                                    g_dxHandler->GetUIState().ShowItemflavWindow(true);
+                                    }).detach();
+                                }, true);
+                        }
+
+                        MainWnd_LaunchSkinFinderForGame(gameDescriptor->gamePath, gameDescriptor->gameType);
+                    }
+                }
             }
 
             CUIState& uiState = g_dxHandler->GetUIState();
@@ -665,6 +871,98 @@ void MainWnd_WelcomeBox()
 
             ImGui::End();
         }
+    }
+}
+
+static void MainWnd_AssetListMenuBar(std::vector<CGlobalAssetData::AssetLookup_t>& pakAssets)
+{
+    if (ImGui::BeginMenuBar())
+    {
+        if (ImGui::BeginMenu("Export"))
+        {
+            const bool multipleAssetsSelected = s_selectedAssets.size() > 1;
+
+            if (ImGui::Selectable(multipleAssetsSelected ? "Export selected assets" : "Export selected asset"))
+            {
+                if (!s_selectedAssets.empty())
+                {
+                    std::deque<CAsset*> cpyAssets;
+                    cpyAssets.insert(cpyAssets.end(), s_selectedAssets.begin(), s_selectedAssets.end());
+                    CThread(HandlePakAssetExportList, std::move(cpyAssets), g_rsxSettings.exportAssetDeps).detach();
+                    s_selectedAssets.clear();
+                }
+            }
+
+            if (ImGui::Selectable("Export all for selected type", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
+            {
+                if (s_selectedAssets.size() == 1)
+                {
+                    const uint32_t desiredType = s_selectedAssets[0]->GetAssetType();
+                    auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredType](const CGlobalAssetData::AssetLookup_t& a)
+                        {
+                            return a.m_asset->GetAssetType() == desiredType;
+                        });
+
+                    std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
+                    CThread(HandleExportSelectedAssetType, std::move(allAssets), g_rsxSettings.exportAssetDeps).detach();
+                    s_selectedAssets.clear();
+                }
+            }
+
+            if (ImGui::Selectable("Export all for selected pak", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
+            {
+                if (s_selectedAssets.size() == 1 && s_selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
+                {
+                    const CPakFile* desiredPak = s_selectedAssets[0]->GetContainerFile<const CPakFile>();
+                    auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredPak](const CGlobalAssetData::AssetLookup_t& a)
+                        {
+                            return a.m_asset->GetAssetContainerType() == CAsset::ContainerType::PAK && a.m_asset->GetContainerFile<const CPakFile>() == desiredPak;
+                        });
+
+                    std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
+                    CThread(HandleExportSelectedAssetType, std::move(allAssets), g_rsxSettings.exportAssetDeps).detach();
+                    s_selectedAssets.clear();
+                }
+            }
+
+            if (ImGui::Selectable("Export all for selected pak and type", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
+            {
+                if (s_selectedAssets.size() == 1 && s_selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
+                {
+                    const CPakFile* desiredPak = s_selectedAssets[0]->GetContainerFile<const CPakFile>();
+                    const uint32_t desiredType = s_selectedAssets[0]->GetAssetType();
+                    auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredPak, desiredType](const CGlobalAssetData::AssetLookup_t& a)
+                        {
+                            return a.m_asset->GetAssetContainerType() == CAsset::ContainerType::PAK
+                                && a.m_asset->GetContainerFile<CPakFile>() == desiredPak
+                                && a.m_asset->GetAssetType() == desiredType;
+                        });
+
+                    std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
+                    CThread(HandleExportSelectedAssetType, std::move(allAssets), g_rsxSettings.exportAssetDeps).detach();
+                    s_selectedAssets.clear();
+                }
+            }
+
+            if (ImGui::Selectable("Export all"))
+                CThread(HandleExportAllPakAssets, &pakAssets, g_rsxSettings.exportAssetDeps).detach();
+
+            // Exports the names of all assets in the currently shown filtered asset list (i.e., search results)
+            if (ImGui::Selectable("Export list of asset names..."))
+                CThread(HandleListExportPakAssets, g_dxHandler->GetWindowHandle(), &pakAssets).detach();
+
+            ImGui::EndMenu();
+        }
+
+        const std::string assetCountText = std::format("{} assets", !FilterConfig->textFilter.IsActive() ? g_assetData.v_assets.size() : s_filteredAssets.size());
+
+        const float availX = ImGui::GetContentRegionAvail().x;
+        const float sizeX = ImGui::CalcTextSize(assetCountText.c_str()).x;
+        ImGui::SetCursorPosX(ImGui::GetCursorPosX() + (availX-sizeX));
+
+        ImGui::TextDisabled("%s", assetCountText.c_str());
+
+        ImGui::EndMenuBar();
     }
 }
 
@@ -725,9 +1023,22 @@ static std::atomic<AssetList*> s_filterReady{ nullptr };
 
 void HandleRenderFrame()
 {
+    std::lock_guard lock(g_assetData.m_uiMutex);
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
+
+    // These shortcuts shouldn't be allowed to work when we are already processing a file load
+    if (!inJobAction)
+    {
+        // CTRL + O : Open files
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_O, ImGuiInputFlags_RouteGlobal))
+            ShowOpenFileDialog();
+
+        // CTRL + W : Unload files
+        if (ImGui::Shortcut(ImGuiMod_Ctrl | ImGuiKey_W, ImGuiInputFlags_RouteGlobal))
+            ClearLoadState();
+    }
 
     // create a docking area across the entire viewport
     if (ImGui::GetIO().ConfigFlags & ImGuiConfigFlags_DockingEnable)
@@ -741,11 +1052,12 @@ void HandleRenderFrame()
                 .Window("Scene", true)
                 .DockLeft(0.25f)
                     .Window("Asset List")
+                    .Window("File Info")
                     .Done()
                 .DockRight(0.25f)
                     .Window("Asset Info");
         }
-        //ImGui::SetNextWindowBgAlpha(0.f);
+
         ImGui::DockSpaceOverViewport(dockspaceId, NULL, ImGuiDockNodeFlags_PassthruCentralNode, 0);
     }
 
@@ -763,6 +1075,7 @@ void HandleRenderFrame()
 
 #if defined(DEBUG_IMGUI_DEMO)
     ImGui::ShowDemoWindow();
+    ImPlot::ShowDemoWindow(nullptr);
 #endif
 
     MainWnd_MenuBar();
@@ -775,90 +1088,12 @@ void HandleRenderFrame()
 
     const bool shouldPopulateAssetWindows = !inJobAction && !g_assetData.v_assetContainers.empty();
 
-    if (ImGui::Begin("Asset List", nullptr, ImGuiWindowFlags_MenuBar) && shouldPopulateAssetWindows)
+    // dude why did i do this to myself
+    if (!SHOW_WELCOME_BOX && ImGui::Begin("Asset List", nullptr, ImGuiWindowFlags_MenuBar) && shouldPopulateAssetWindows)
     {
-
         std::vector<CGlobalAssetData::AssetLookup_t>& pakAssets = FilterConfig->textFilter.IsActive() ? s_filteredAssets : g_assetData.v_assets;
 
-        if (ImGui::BeginMenuBar())
-        {
-            if (ImGui::BeginMenu("Export"))
-            {
-                const bool multipleAssetsSelected = s_selectedAssets.size() > 1;
-
-                if (ImGui::Selectable(multipleAssetsSelected ? "Export selected assets" : "Export selected asset"))
-                {
-                    if (!s_selectedAssets.empty())
-                    {
-                        std::deque<CAsset*> cpyAssets;
-                        cpyAssets.insert(cpyAssets.end(), s_selectedAssets.begin(), s_selectedAssets.end());
-                        CThread(HandlePakAssetExportList, std::move(cpyAssets), g_ExportSettings.exportAssetDeps).detach();
-                        s_selectedAssets.clear();
-                    }
-                }
-
-                if (ImGui::Selectable("Export all for selected type", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
-                {
-                    if (s_selectedAssets.size() == 1)
-                    {
-                        const uint32_t desiredType = s_selectedAssets[0]->GetAssetType();
-                        auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredType](const CGlobalAssetData::AssetLookup_t& a)
-                            {
-                                return a.m_asset->GetAssetType() == desiredType;
-                            });
-
-                        std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
-                        CThread(HandleExportSelectedAssetType, std::move(allAssets), g_ExportSettings.exportAssetDeps).detach();
-                        s_selectedAssets.clear();
-                    }
-                }
-
-                if (ImGui::Selectable("Export all for selected pak", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
-                {
-                    if (s_selectedAssets.size() == 1 && s_selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
-                    {
-                        const CPakFile* desiredPak = s_selectedAssets[0]->GetContainerFile<const CPakFile>();
-                        auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredPak](const CGlobalAssetData::AssetLookup_t& a)
-                            {
-                                return a.m_asset->GetAssetContainerType() == CAsset::ContainerType::PAK && a.m_asset->GetContainerFile<const CPakFile>() == desiredPak;
-                            });
-
-                        std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
-                        CThread(HandleExportSelectedAssetType, std::move(allAssets), g_ExportSettings.exportAssetDeps).detach();
-                        s_selectedAssets.clear();
-                    }
-                }
-
-                if (ImGui::Selectable("Export all for selected pak and type", false, multipleAssetsSelected ? ImGuiSelectableFlags_Disabled : 0))
-                {
-                    if (s_selectedAssets.size() == 1 && s_selectedAssets[0]->GetAssetContainerType() == CAsset::ContainerType::PAK)
-                    {
-                        const CPakFile* desiredPak = s_selectedAssets[0]->GetContainerFile<const CPakFile>();
-                        const uint32_t desiredType = s_selectedAssets[0]->GetAssetType();
-                        auto allAssetsOfDesiredType = pakAssets | std::ranges::views::filter([desiredPak, desiredType](const CGlobalAssetData::AssetLookup_t& a)
-                            {
-                                return a.m_asset->GetAssetContainerType() == CAsset::ContainerType::PAK
-                                    && a.m_asset->GetContainerFile<CPakFile>() == desiredPak
-                                    && a.m_asset->GetAssetType() == desiredType;
-                            });
-
-                        std::vector<CGlobalAssetData::AssetLookup_t> allAssets(allAssetsOfDesiredType.begin(), allAssetsOfDesiredType.end());
-                        CThread(HandleExportSelectedAssetType, std::move(allAssets), g_ExportSettings.exportAssetDeps).detach();
-                        s_selectedAssets.clear();
-                    }
-                }
-
-                if (ImGui::Selectable("Export all"))
-                    CThread(HandleExportAllPakAssets, &pakAssets, g_ExportSettings.exportAssetDeps).detach();
-
-                // Exports the names of all assets in the currently shown filtered asset list (i.e., search results)
-                if (ImGui::Selectable("Export list of asset names..."))
-                    CThread(HandleListExportPakAssets, g_dxHandler->GetWindowHandle(), &pakAssets).detach();
-
-                ImGui::EndMenu();
-            }
-            ImGui::EndMenuBar();
-        }
+        MainWnd_AssetListMenuBar(pakAssets);
 
         EnsureRegexIcon();
 
@@ -869,7 +1104,9 @@ void HandleRenderFrame()
         const float inputWidth = ImGui::GetContentRegionAvail().x - btnTotalWidth;
 
         const float rowY = ImGui::GetCursorPosY();
-        bool filterChanged = FilterConfig->textFilter.Draw("##Filter", inputWidth);
+        // OR case if we load a pak and the filter is not cleared yet.
+        bool filterChanged = FilterConfig->textFilter.Draw("##Filter", "Filter (incl,-excl)", inputWidth)
+            || (s_filteredAssets.empty() && FilterConfig->textFilter.IsActive());
 
         ImGui::SameLine(0.f, 0.f);
         ImGui::SetCursorPosY(rowY);
@@ -1035,7 +1272,11 @@ void HandleRenderFrame()
             s_filteredAssets = std::move(*ready);
             delete ready;
         }
-		
+
+        ImGui::PushFont(NULL, 16.f);
+        ImGui::TextDisabled("Double-click the name of an asset to export");
+        ImGui::PopFont();
+
         constexpr int numColumns = AssetColumn_t::_AC_COUNT;
         if (ImGui::BeginTable("Assets", numColumns, ImGuiTableFlags_Hideable | ImGuiTableFlags_Sortable | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_BordersOuterH | ImGuiTableFlags_BordersOuterV | ImGuiTableFlags_ScrollY | ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable))
         {
@@ -1072,15 +1313,17 @@ void HandleRenderFrame()
                     CAsset* const asset = pakAssets[rowNum].m_asset;
 
                     // previously this was GUID_pakCRC but realistically the pak filename also works instead of the crc (though it may be slower for lookup?)
-                    ImGui::PushID(std::format("{:X}_{}", asset->GetAssetGUID(), asset->GetContainerFileName()).c_str());
+                    ImGui::PushID(std::format("{:X}_{}", asset->GetAssetGUID(), rowNum).c_str());
 
                     ImGui::TableNextRow();
+
+                    auto typeBinding = g_assetData.m_assetTypeBindings.find(asset->GetAssetType());
+                    const bool knownAssetType = typeBinding != g_assetData.m_assetTypeBindings.end();
 
                     if (ImGui::TableSetColumnIndex(AssetColumn_t::AC_Type))
                     {
                         ColouredTextForAssetType(asset);
 
-                        auto typeBinding = g_assetData.m_assetTypeBindings.find(asset->GetAssetType());
                         if (typeBinding != g_assetData.m_assetTypeBindings.end())
                             ImGuiExt::Tooltip(typeBinding->second.name);
                     }
@@ -1089,6 +1332,14 @@ void HandleRenderFrame()
                     {
                         const bool isSelected = std::find(s_selectedAssets.begin(), s_selectedAssets.end(), asset) != s_selectedAssets.end();
                         ImGui::SetNextItemSelectionUserData(rowNum);
+
+                        // If this is a known asset type but the user has chosen not to load it, change the asset's name to red
+                        // so that they know the asset will not work correctly
+                        if(knownAssetType && !typeBinding->second._loadAssetType)
+                            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.f, 0.f, 1.f));
+                        else if(asset->GetExportedStatus())
+                            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.f, 1.f, 1.f, 1.f));
+
                         if (ImGui::Selectable(asset->GetAssetName().c_str(), isSelected, ImGuiSelectableFlags_AllowDoubleClick))
                         {
                             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -1099,10 +1350,57 @@ void HandleRenderFrame()
                                 if (!isSelected)
                                     s_selectedAssets.insert(s_selectedAssets.end(), asset);
 
-                                CThread(HandlePakAssetExportList, std::move(s_selectedAssets), g_ExportSettings.exportAssetDeps).detach();
+                                CThread(HandlePakAssetExportList, std::move(s_selectedAssets), g_rsxSettings.exportAssetDeps).detach();
 
                                 s_selectedAssets.clear();
                             }
+                        }
+                        if ((knownAssetType && !typeBinding->second._loadAssetType) || asset->GetExportedStatus())
+                            ImGui::PopStyleColor();
+
+
+                        // Context menu (right-click)
+                        if (ImGui::BeginPopupContextItem())
+                        {
+                            if (ImGui::Selectable("Copy asset names"))
+                            {
+                                std::stringstream nameStream;
+                                for (auto& it : s_selectedAssets)
+                                {
+                                    nameStream << it->GetAssetName() << "\n";
+                                }
+
+                                ImGui::SetClipboardText(nameStream.str().c_str());
+
+                                ImGui::InsertNotification({ ImGuiToastType::Success, 1000, 100.f, "Copied!", });
+
+                                ImGui::CloseCurrentPopup();
+                            }
+
+                            if (ImGui::Selectable("Copy asset guids"))
+                            {
+                                std::stringstream guidStream;
+                                for (auto& it : s_selectedAssets)
+                                {
+                                    guidStream << "0x" << std::uppercase << std::hex << it->GetAssetGUID() << "\n";
+                                }
+
+                                ImGui::SetClipboardText(guidStream.str().c_str());
+
+                                ImGui::InsertNotification({ ImGuiToastType::Success, 1000, 100.f, "Copied!" });
+
+                                ImGui::CloseCurrentPopup();
+                            }
+
+                            if (ImGui::Selectable("Export selected assets"))
+                            {
+                                ImGui::CloseCurrentPopup();
+
+                                CThread(HandlePakAssetExportList, std::move(s_selectedAssets), g_rsxSettings.exportAssetDeps).detach();
+                                s_selectedAssets.clear();
+                            }
+
+                            ImGui::EndPopup();
                         }
                     }
 
@@ -1122,10 +1420,52 @@ void HandleRenderFrame()
             ImGui::EndTable();
         }
     }
-    ImGui::End();
+    if (!SHOW_WELCOME_BOX) ImGui::End();
+
+    if (!SHOW_WELCOME_BOX && ImGui::Begin("File Info", nullptr) && shouldPopulateAssetWindows)
+    {
+        static size_t selectedFileIndex = UINT64_MAX;
+        static std::string selectedFileName = "(none)";
+
+        if (g_assetData.v_assetContainers.size() > 1)
+        {
+            if (ImGui::BeginCombo("File", selectedFileName.c_str()))
+            {
+                size_t i = 0;
+                for (auto& it : g_assetData.v_assetContainers)
+                {
+                    const std::string filePath = it->GetFilePath().filename().string();
+                    if (ImGui::Selectable(filePath.c_str(), selectedFileIndex == i))
+                    {
+                        selectedFileName = filePath;
+                        selectedFileIndex = i;
+                    }
+
+                    i++;
+                }
+
+                ImGui::EndCombo();
+            }
+        }
+        else
+        {
+            selectedFileIndex = 0;
+            selectedFileName = g_assetData.v_assetContainers.at(selectedFileIndex)->GetFilePath().filename().string();
+        }
+
+        if (selectedFileIndex != UINT64_MAX && selectedFileIndex < g_assetData.v_assetContainers.size())
+        {
+            ImGui::PushFont(NULL, 16.f);
+            ImGui::TextDisabled("Selected: %s", selectedFileName.c_str());
+            ImGui::PopFont();
+
+            g_assetData.v_assetContainers.at(selectedFileIndex)->ContainerPreviewUI();
+        }
+    }
+    if (!SHOW_WELCOME_BOX) ImGui::End();
 
     // This window must be drawn before "Scene", as the scene relies on previewDrawData already being set from here
-    if (ImGui::Begin("Asset Info", nullptr, ImGuiWindowFlags_MenuBar) && shouldPopulateAssetWindows)
+    if (!SHOW_WELCOME_BOX && ImGui::Begin("Asset Info", nullptr, ImGuiWindowFlags_MenuBar) && shouldPopulateAssetWindows)
     {
         CAsset* const firstAsset = s_selectedAssets.empty() ? nullptr : *s_selectedAssets.begin();
         if (ImGui::BeginMenuBar())
@@ -1138,7 +1478,7 @@ void HandleRenderFrame()
                     // Option to "quickly" export the asset to the exported_files directory
                     // in the format defined by the "Export Options" menu.
                     if (ImGui::MenuItem("Quick Export"))
-                        CThread(HandleExportBindingForAsset, std::move(firstAsset), g_ExportSettings.exportAssetDeps).detach();
+                        CThread(HandleExportBindingForAsset, std::move(firstAsset), g_rsxSettings.exportAssetDeps).detach();
 
                     ImGui::EndMenu();
                 }
@@ -1181,30 +1521,35 @@ void HandleRenderFrame()
             const uint32_t type = firstAsset->GetAssetType();
             if (auto it = g_assetData.m_assetTypeBindings.find(type); it != g_assetData.m_assetTypeBindings.end())
             {
-                if (it->second.previewFunc)
+                if (it->second._loadAssetType)
                 {
-                    // First frame is a special case, we wanna reset some settings for the preview function.
-                    const bool firstFrameForAsset = firstAsset != s_prevRenderInfoAsset;
+                    if (it->second.previewFunc)
+                    {
+                        // First frame is a special case, we wanna reset some settings for the preview function.
+                        const bool firstFrameForAsset = firstAsset != s_prevRenderInfoAsset;
 
-                    previewDrawData = reinterpret_cast<CDXDrawData*>(it->second.previewFunc(static_cast<CPakAsset*>(firstAsset), firstFrameForAsset));
-                    s_prevRenderInfoAsset = firstAsset;
+                        previewDrawData = reinterpret_cast<CDXDrawData*>(it->second.previewFunc(static_cast<CPakAsset*>(firstAsset), firstFrameForAsset));
+                        s_prevRenderInfoAsset = firstAsset;
 
+                    }
+                    else ImGui::Text("Asset type '%s' does not currently support Asset Preview.", fourCCToString(type).c_str());
                 }
-                else ImGui::Text("Asset type '%s' does not currently support Asset Preview.", fourCCToString(type).c_str());
+                else ImGui::Text("This asset type was not loaded because of your current settings.\nYou can change this by visiting Settings > %s (%s) > Load Asset Type", it->second.name, fourCCToString(type, true).c_str());
             }
             else ImGui::Text("Asset type '%s' is not currently supported.", fourCCToString(type).c_str());
         }
         else ImGui::TextUnformatted("No asset selected.");
     }
-    ImGui::End();
+    if(!SHOW_WELCOME_BOX) ImGui::End();
 
     // The "scene" preview window must always be in the center.
     // Setting NoMove seems to be the best way to stop it from being undocked
+    
     if (ImGui::Begin("Scene", nullptr, ImGuiWindowFlags_NoMove))
     {
         const ImVec2 avail = ImGui::GetContentRegionAvail();
 
-        if (avail != s_previousAvailableSizeForPreview || !g_dxHandler->GetPreviewRTV())
+        if ((avail != s_previousAvailableSizeForPreview && avail.x != 0 && avail.y != 0) || !g_dxHandler->GetPreviewRTV())
         {
             g_dxHandler->CleanupForPreviewResize();
             g_dxHandler->CreateViewForSceneWindow(static_cast<uint16_t>(avail.x), static_cast<uint16_t>(avail.y));
@@ -1235,15 +1580,15 @@ void HandleRenderFrame()
     if (uiState.settingsWindowVisible)
         SettingsWnd_Draw(&uiState);
 
-#if defined(HAS_ITEMFLAV_WINDOW)
-    if (uiState.itemflavWindowVisible)
+    if (uiState.itemflavWindowVisible && g_assetData.v_assetContainers.size() > 0 && !inJobAction)
         ItemflavWnd_Draw(&uiState);
-#endif
 
     if (uiState.logWindowVisible)
         LogWnd_Draw(&uiState);
 
     g_pImGuiHandler->HandleProgressBar();
+
+    ImGui::RenderNotifications();
 
     ImGui::Render();
 

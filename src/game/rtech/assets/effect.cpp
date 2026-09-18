@@ -5,7 +5,7 @@
 #include <game/rtech/utils/utils.h>
 #include <thirdparty/imgui/imgui.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 static const char* const s_PathPrefixEFCT = s_AssetTypePaths.find(AssetType_t::EFCT)->second;
 
 static bool ExportEffectAsset(CAsset* const asset, const int setting)

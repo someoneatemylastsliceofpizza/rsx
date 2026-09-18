@@ -2,7 +2,7 @@
 #include <game/rtech/assets/shaderset.h>
 #include <thirdparty/imgui/imgui.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadShaderSetAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -205,7 +205,7 @@ bool ExportShaderSetAsset(CAsset* const asset, const int setting)
 
 	// not currently used
 	// Create exported path + asset path.
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+	std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
 	std::filesystem::path dirPath = exportPath;
 
 	dirPath.append(s_PathPrefixSHDR);

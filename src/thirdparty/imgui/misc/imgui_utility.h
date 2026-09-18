@@ -64,9 +64,13 @@ public:
         Build();
     }
 
-    bool Draw(const char* label = "Filter", float width = 0.0f);
+    bool Draw(const char* label = "Filter", const char* hint="incl,-excl", float width = 0.0f);
     bool PassFilter(const char* text, const char* textEnd = nullptr) const;
     void Build();
+    void SetText(const std::string_view& str)
+    {
+        inputBuf = str;
+    }
 
     void Clear()
     {
@@ -313,7 +317,15 @@ static std::string _labelPrefix(const char* const label, int inputRelPosX)
 
 // ImGui extensions and helper functions
 namespace ImGuiExt {
+
+    struct AudioMarker_s
+    {
+        std::string name;
+        uint32_t framePosition;
+    };
+
     void ProgressBarCentered(float fraction, const ImVec2& size_arg, const char* overlay, ProgressBarEvent_t* event);
+    bool Timeline(const char* strId, float currentTime, float endTime, size_t endFrame, const std::vector<AudioMarker_s>& markers, const ImVec2& size_arg, size_t* o_seekTime);
     void HelpMarker(const char* const desc);
     void Tooltip(const char* const text);
 
@@ -348,5 +360,33 @@ namespace ImGuiExt {
         ImGui::TextUnformatted(text.c_str());
         ImGui::SetCursorPosY(ImGui::GetCursorPosY() - 2.f);
         ImGui::PopStyleColor();
+    }
+
+    inline float TableFullRowBegin()
+    {
+        ImGuiTable* table = ImGui::GetCurrentTable();
+
+        // Set to the first visible column, so that all contents starts from the leftmost point
+        for (ImGuiTableColumnIdx* clmn_idx = table->DisplayOrderToIndex.Data,
+            *end = table->DisplayOrderToIndex.DataEnd;
+            clmn_idx < end; ++clmn_idx)
+        {
+            if (ImGui::TableSetColumnIndex(*clmn_idx)) break;
+        }
+
+        ImRect* work_rect = &ImGui::GetCurrentWindow()->WorkRect;
+        float   restore_x = work_rect->Max.x;
+        ImRect  bg_clip_rect = table->BgClipRect; // NOTE: this accounts for header column & scrollbar
+
+        ImGui::PushClipRect(bg_clip_rect.Min, bg_clip_rect.Max, 0); // ensure that both our own drawing...
+        work_rect->Max.x = bg_clip_rect.Max.x;                 // ...and Dear ImGui drawing will be visible across the entire row
+
+        return restore_x;
+    }
+
+    inline void TableFullRowEnd(float restore_x)
+    {
+        ImGui::GetCurrentWindow()->WorkRect.Max.x = restore_x;
+        ImGui::PopClipRect();
     }
 };

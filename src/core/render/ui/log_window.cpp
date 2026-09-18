@@ -45,6 +45,8 @@ void LogWnd_Draw(CUIState* uiState)
 
 			ImGui::TableHeadersRow();
 
+			std::lock_guard logLock(g_assetData.m_logMutex);
+
 			for (size_t i = 0; i < g_assetData.GetNumLogMessages(); ++i)
 			{
 				const ContainerMessage_t* msg = &g_assetData.GetLogMessages()[i];
@@ -74,8 +76,7 @@ void LogWnd_Draw(CUIState* uiState)
 
 			ImGui::EndTable();
 		}
-
-
-        ImGui::End();
     }
+
+	ImGui::End();
 }

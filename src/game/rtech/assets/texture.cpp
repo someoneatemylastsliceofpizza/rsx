@@ -5,7 +5,7 @@
 #include <core/render/ui/styles.h>
 
 extern CDXParentHandler* g_dxHandler;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 inline std::string FormatTextureAssetName(const char* const str)
 {
@@ -66,10 +66,10 @@ void LoadTextureAsset(CAssetContainer* const pak, CAsset* const asset)
     // [rika]: verify we know this texture format
     assertm(txtrAsset->imgFormat < eTextureFormat::TEX_FMT_UNKNOWN, "unaccounted texture format!");
 
-#ifdef _DEBUG
-    if (txtrAsset->type != _UNUSED && s_TextureTypeMap.count(txtrAsset->type) == 0)
-        Log("found texture '%s' with unknown texture type: %i\n", asset->GetAssetName().c_str(), txtrAsset->type);
-#endif // _DEBUG
+//#ifdef _DEBUG
+//    if (txtrAsset->type != _UNUSED && s_TextureTypeMap.count(txtrAsset->type) == 0)
+//        Log("found texture '%s' with unknown texture type: %i\n", asset->GetAssetName().c_str(), txtrAsset->type);
+//#endif // _DEBUG
 
     txtrAsset->totalMipLevels = (txtrAsset->optStreamedMipLevels + txtrAsset->streamedMipLevels + txtrAsset->permanentMipLevels);
     txtrAsset->arraySize = txtrAsset->arraySize == 0 ? 1 : txtrAsset->arraySize;
@@ -495,6 +495,8 @@ void* PreviewTextureAsset(CAsset* const asset, const bool firstFrameForAsset)
         for (size_t i = 0; i < ARRAYSIZE(currContainerStem); i++)
             currContainerStem[i].clear();
 
+        uint8_t highestLoadedMipIdx = 0xff;
+
         uint8_t mipIdx = 0;
         for (auto& mip : txtrAsset->mipArray)
         {
@@ -531,10 +533,15 @@ void* PreviewTextureAsset(CAsset* const asset, const bool firstFrameForAsset)
                 previewData.dataOrigin = targetStem.c_str();
             }
 
+            if (mip.isLoaded)
+                highestLoadedMipIdx = mipIdx;
+
             mipIdx++;
         }
 
-        selectedMip = selectedMip.index > previewMipSize ? previewMips.back() : selectedMip;
+        selectedMip = highestLoadedMipIdx != 0xFF ? previewMips.at(highestLoadedMipIdx) : previewMips.back();// selectedMip.index > previewMipSize ? previewMips.back() : selectedMip;
+        lastSelectedMip = selectedMip.level;
+
         selectedArrayIndex = selectedArrayIndex > txtrAsset->arraySize ? 0 : selectedArrayIndex;
     }
 
@@ -683,7 +690,7 @@ inline void NormalRecalc(const bool isNormal, CTexture* texture)
     if (!isNormal)
         return;
 
-    switch (g_ExportSettings.exportNormalRecalcSetting)
+    switch (g_rsxSettings.exportNormalRecalcSetting)
     {
     case eNormalExportRecalc::NML_RECALC_DX:
     {
@@ -947,7 +954,7 @@ bool ExportTextureAsset(CAsset* const asset, const int setting)
     const TextureAsset* const txtrAsset = pakAsset->extraData<const TextureAsset* const>();
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path texturePath(asset->GetAssetName());
 
     const bool hasFullPath =
@@ -955,7 +962,7 @@ bool ExportTextureAsset(CAsset* const asset, const int setting)
         g_cacheDBManager.TryGetEntry(pakAsset->GetAssetGUID()).has_value();
 
     // [rika]: there is no point to add the parent path if we don't have a proper name (it will just end up in 's_PathPrefixTXTR' anyway)
-    if (hasFullPath && g_ExportSettings.exportPathsFull)
+    if (hasFullPath && g_rsxSettings.exportPathsFull)
         exportPath.append(texturePath.parent_path().string());
     else
         exportPath.append(s_PathPrefixTXTR);

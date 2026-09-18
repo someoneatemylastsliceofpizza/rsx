@@ -5,11 +5,25 @@ struct CUI_ItemflavCharacterSkin
 {
 	const char* assetPath;
 
-	void* settingsAsset;
-};
+	const char* localizationKey_NAME;
+	const char* quality;
 
+	const char* armsModel;
+	const char* bodyModel;
+
+	const char* armsModelPak;
+	const char* bodyModelPak;
+
+	void* settingsAsset;
+
+	uint32_t qualityIndex;
+	bool includeInList;
+};
+class CTexture;
 struct CUI_ItemflavCharacter
 {
+	std::shared_ptr<CTexture> iconTexture;
+
 	const char* assetPath;
 
 	uint64_t settingsAssetGuid;
@@ -18,43 +32,74 @@ struct CUI_ItemflavCharacter
 	const char* characterName;
 	const char* characterDesc;
 	const char* shippingStatus;
+	const char* icon;
 
-	uint32_t numSkins;
-	CUI_ItemflavCharacterSkin* skins;
+	std::vector<CUI_ItemflavCharacterSkin> skins;
+};
 
+struct CUI_ItemflavWeaponSkin
+{
+	const char* assetPath;
+
+	const char* localizationKey_NAME;
+	const char* quality;
+
+	const char* viewModel;
+	const char* worldModel;
+
+	void* settingsAsset;
+
+	uint32_t qualityIndex;
+	bool includeInList;
+};
+
+struct CUI_ItemflavWeapon
+{
+	std::shared_ptr<CTexture> iconTexture;
+
+	const char* assetPath;
+
+	uint64_t settingsAssetGuid;
+	void* settingsAsset;
+
+	const char* weaponName;
+	const char* weaponDesc;
+	const char* weaponClassname;
+	const char* icon;
+
+	std::vector<CUI_ItemflavWeaponSkin> skins;
+
+	bool shippingWeapon;
+	bool isMelee;
 };
 
 struct CUI_ItemflavWindowData
 {
 	bool triedToInitialise;
 
-	int numCharacters;
-	CUI_ItemflavCharacter* characterData;
+	std::vector<CUI_ItemflavCharacter> characterData;
+	std::vector<CUI_ItemflavWeapon> weaponData;
 
 	void* localizationAsset;
 
 	std::string selectedCharacterName;
+	std::string selectedWeaponName;
+
 	int selectedCharacterIdx;
+	int selectedWeaponIdx;
 
 	void Reset()
 	{
 		triedToInitialise = false;
-		numCharacters = 0;
-		
-		if (characterData)
-			delete[] characterData;
-
-		characterData = nullptr;
 
 		localizationAsset = nullptr;
 		selectedCharacterName = "(none)";
+		selectedWeaponName = "(none)";
 		selectedCharacterIdx = -1;
-	}
+		selectedWeaponIdx = -1;
 
-	void AllocCharacterData(int numChars)
-	{
-		this->numCharacters = numChars;
-		this->characterData = new CUI_ItemflavCharacter[numChars];
+		characterData.clear();
+		weaponData.clear();
 	}
 };
 
@@ -70,6 +115,15 @@ public:
 		itemFlavorListAsset = nullptr;
 
 		itemflavData.Reset();
+
+		itemflavWindowVisible = false;
+	}
+
+	CUIState() : settingsWindowVisible(false), itemflavWindowVisible(false),
+		logWindowVisible(false), sceneWindowHovered(false), itemFlavorListAsset(nullptr),
+		itemflavData{}
+	{
+		itemflavData.Reset();
 	}
 
 public:
@@ -84,4 +138,6 @@ public:
 
 	const char* newVersionType;
 	GitHubReleaseInfo_s newVersionReleaseInfo;
+
+	std::atomic<bool> isLoading;
 };

@@ -23,6 +23,8 @@
 #include "update/update.h"
 #include <game/asset.h>
 #include <core/logging/logger.h>
+#include "bridge/bridge.h"
+#include <implot/implot.h>
 
 #pragma warning(push, 0)
 #pragma warning( disable: 4127 )
@@ -31,12 +33,6 @@ CDXParentHandler* g_dxHandler;
 std::atomic<uint32_t> g_maxConcurrentThreadCount = 1u;
 
 CBufferManager g_BufferManager; // called constructor on init.
-
-ExportSettings_t g_ExportSettings{ .exportNormalRecalcSetting = eNormalExportRecalc::NML_RECALC_NONE, .exportTextureNameSetting = eTextureExportName::TXTR_NAME_TEXT,
-    .exportMaterialTextures = true, .exportPathsFull = false, .exportAssetDeps = false, .disableCachedNames = false, .previewedSkinIndex = 0,
-    .qcMajorVersion = 49, .qcMinorVersion = 0, .exportRigSequences = true, .exportModelSkin = false, .exportModelMatsTruncated = false,
-    .exportQCIFiles = false, .exportPhysicsContentsFilter = static_cast<uint32_t>(TRACE_MASK_ALL), .exportDirectory = ""
-};
 
 // Handle CLI to only init certain asset types.
 static void RegisterAssetTypeBindings(const CCommandLine* const cli)
@@ -105,11 +101,14 @@ static void RegisterAssetTypeBindings(const CCommandLine* const cli)
     
     // audio
     extern void InitAudioSourceAssetType();
+    extern void InitAudioEventAssetType();
 
     // bluepoint
     extern void InitBluepointWrappedFileAssetType();
 
     extern void InitCubeAssetType();
+
+    extern void InitVPKFileAssetType();
 
 
     // call func
@@ -174,11 +173,14 @@ static void RegisterAssetTypeBindings(const CCommandLine* const cli)
 
     // audio
     InitAudioSourceAssetType();
+    InitAudioEventAssetType();
 
     // bluepoint
     InitBluepointWrappedFileAssetType();
 
     InitCubeAssetType();
+
+    InitVPKFileAssetType();
 
 #if defined(DEBUG_NO_ASEQ_POSTLOAD)
     g_assetData.Log_Warning(nullptr, "Built with DEBUG_NO_ASEQ_POSTLOAD. Animation Sequence (aseq) assets will not work properly!");
@@ -273,7 +275,7 @@ int main(int argc, char* argv[])
     g_CrashHandler.Init();
 #endif
 
-    g_ExportSettings.SetDefaultValues(&cli);
+    g_rsxSettings.SetDefaultValues(&cli);
 
     g_maxConcurrentThreadCount = CThread::GetConCurrentThreads();
 
@@ -321,6 +323,7 @@ int main(int argc, char* argv[])
         UpdateWindow(windowHandle);
 
         ImGui::CreateContext();
+        ImPlot::CreateContext();
         g_pImGuiHandler->SetStyle();
         g_pImGuiHandler->SetupHandler();
 
@@ -353,7 +356,14 @@ int main(int argc, char* argv[])
     HandleLoadFromCommandLine(&cli);
 
     if (!IS_NOGUI(&cli))
+    {
+#if HAS_BRIDGE
+        CThread sockThread(Bridge_SetupSocketThread);
+        sockThread.detach();
+#endif
+
         RunWindowMsgLoop();
+    }
 
     g_cacheDBManager.SaveToFile((std::filesystem::current_path() / RSX_CACHE_DB_FILENAME).string());
 
@@ -361,6 +371,7 @@ int main(int argc, char* argv[])
     {
         ImGui_ImplDX11_Shutdown();
         ImGui_ImplWin32_Shutdown();
+        ImPlot::DestroyContext();
         ImGui::DestroyContext();
     }
 

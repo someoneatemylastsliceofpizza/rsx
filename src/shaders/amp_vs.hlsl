@@ -6,6 +6,14 @@ struct VS_Input
     uint color : COLOR;
     float2 uv : TEXCOORD;    
 };
+
+// uv
+// world position
+// normal
+// tangent
+// binormal
+// screen pos prev frame?
+// screen pos curr frame
 struct VS_Output
 {
     float4 v0 : TEXCOORD0;

@@ -59,13 +59,11 @@ SettingsKVValue_t::~SettingsKVValue_t()
 		case eSettingsFieldType::ST_ARRAY:
 		case eSettingsFieldType::ST_DYN_ARRAY:
 		{
-			printf("Deleting settings array\n");
 			delete[] getValue<SettingsKVValue_t*>();
 			break;
 		}
 		case eSettingsFieldType::_ST_OBJECT:
 		{
-			printf("Deleting settings object\n");
 			delete[] getValue<SettingsKVField_t*>();
 			break;
 		}
@@ -84,7 +82,9 @@ bool SettingsAsset::ParseSettingsData()
 	// If the layout asset wasn't available when the load function was called, try again here.
 	// If there still isn't a valid layout asset, return early
 	if (!this->layoutAsset && !(this->layoutAsset = g_assetData.FindAssetByGUID<CPakAsset>(this->layoutGuid)))
-			return false;
+		return false;
+
+	assert(this->layoutAsset->GetPostLoadStatus());
 
 	if (_fields)
 	{
@@ -462,7 +462,7 @@ bool ExportSettingsAsset(CAsset* const asset, const int setting)
 	if (!RenderSettingsAsset(pakAsset, stringStream))
 		return false;
 
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+	std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
 	std::filesystem::path stgsPath = asset->GetAssetName();
 
 	exportPath.append(stgsPath.parent_path().string());

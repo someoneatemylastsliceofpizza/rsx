@@ -190,6 +190,14 @@ public:
         writer.write(data, len);
     }
 
+    void write(const std::string& str)
+    {
+        if (!checkWritabilityStatus())
+            return;
+
+        writer.write(str.c_str(), str.size());
+    }
+
     void writeString(std::string str)
     {
         if (!checkWritabilityStatus())
@@ -349,4 +357,5 @@ FILE* FileFromHandle(HANDLE handle, const eStreamIOMode mode);
 namespace FileSystem
 {
     bool ReadFileData(const std::string& filePath, std::shared_ptr<char[]>* buffer);
+    bool ReadFileData(const std::string& filePath, std::shared_ptr<char[]>* buffer, size_t readSize);
 }

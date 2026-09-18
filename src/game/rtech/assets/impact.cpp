@@ -1,7 +1,7 @@
 #include "pch.h"
 #include <game/rtech/assets/impact.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadImpactAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -70,10 +70,10 @@ bool ExportImpactAsset(CAsset* const asset, const int setting)
     const std::string impactTxt = R_GetImpactDefinitionAsString(header->rootKey, "");
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path impactPath(asset->GetAssetName());
 
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(impactPath.parent_path().string());
     else
         exportPath.append("impact/");

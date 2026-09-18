@@ -9,7 +9,7 @@
 
 #define ImGuiReadSetting(str, var, a, type)  if (sscanf_s(line, str, &a) == 1) { var = static_cast<type>(a); }
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 extern PreviewSettings_t g_PreviewSettings;
 
 // asset settings
@@ -23,7 +23,7 @@ static void* AssetSettings_ReadOpen(ImGuiContext* const ctx, ImGuiSettingsHandle
         std::string asset = fourCCToString(it.first);
         if (strcmp(asset.c_str(), name) == NULL)
         {
-            return &it.second.e.exportSetting;
+            return &it.second;
         }
     }
 
@@ -37,10 +37,31 @@ static void AssetSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandler
 
     if (entry)
     {
-        int* const exportSetting = static_cast<int*>(entry);
+        AssetTypeBinding_t* const typeBinding = static_cast<AssetTypeBinding_t*>(entry);
 
         int i;
-        ImGuiReadSetting("Setting=%i", *exportSetting, i, int);
+        ImGuiReadSetting("Setting=%i", typeBinding->e.exportSetting, i, int);
+        ImGuiReadSetting("LoadAssetType=%i", typeBinding->_loadAssetType, i, int);
+
+        if (auto assetSettings = g_rsxSettings.assetSettings.find(typeBinding->type); assetSettings != g_rsxSettings.assetSettings.end())
+        {
+            for (auto& setting : assetSettings->second)
+            {
+                switch (setting.valueType)
+                {
+                case UISettingType_e::TYPE_BOOL:
+                    ImGuiReadSetting(setting.cfgName, setting.rawValue.boolVal, i, int);
+                    break;
+                case UISettingType_e::TYPE_U32:
+                    ImGuiReadSetting(setting.cfgName, setting.rawValue.u32Val, i, uint32_t);
+                    break;
+                case UISettingType_e::TYPE_FLOAT32:
+                    ImGuiReadSetting(setting.cfgName, setting.rawValue.flVal, i, float);
+                    break;
+
+                }
+            }
+        }
     }
 }
 
@@ -53,6 +74,18 @@ static void AssetSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandler
     {
         buf->appendf("[%s][%s]\n", handler->TypeName, fourCCToString(it.first).c_str());
         buf->appendf("Setting=%d\n", it.second.e.exportSetting);
+        buf->appendf("LoadAssetType=%d\n", it.second._loadAssetType);
+
+        if (auto assetSettings = g_rsxSettings.assetSettings.find(it.first); assetSettings != g_rsxSettings.assetSettings.end())
+        {
+            for (auto& setting : assetSettings->second)
+            {
+                // this is bad, but the compiler won't throw a warning because of mismatched fmt vars to types since it's a runtime
+                // format string
+                buf->appendf(setting.cfgName, setting.rawValue.u32Val);
+            }
+        }
+
         buf->append("\n");
     }
 }
@@ -140,7 +173,7 @@ static void* ExportSettings_ReadOpen(ImGuiContext* const ctx, ImGuiSettingsHandl
     UNUSED(ctx);
     UNUSED(name);
 
-    return &g_ExportSettings;
+    return &g_rsxSettings;
 }
 
 static void ExportSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandler* const handler, void* const entry, const char* const line)
@@ -150,7 +183,7 @@ static void ExportSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandle
 
     if (entry)
     {
-        ExportSettings_t* const settings = static_cast<ExportSettings_t*>(entry);
+        RSXSettings_t* const settings = static_cast<RSXSettings_t*>(entry);
 
         int i;
         ImGuiReadSetting("ExportPathsFull=%i",              settings->exportPathsFull, i, int);
@@ -170,6 +203,11 @@ static void ExportSettings_ReadLine(ImGuiContext* const ctx, ImGuiSettingsHandle
         ImGuiReadSetting("ExportModelSkin=%i",              settings->exportModelSkin, i, int);
         ImGuiReadSetting("ExportTruncatedMaterials=%i",     settings->exportModelMatsTruncated, i, int);
         ImGuiReadSetting("ExportQCIFiles=%i",               settings->exportQCIFiles, i, int);
+
+        ImGuiReadSetting("BridgePortNum=%i", settings->bridgePort, i, uint16_t);
+
+        //ImGuiReadSetting("UseOrigScriptExportExtensions=%i", settings->useOrigScriptExportExtensions, i, int);
+        settings->useOrigScriptExportExtensions = true; // cant decide if i wanna keep this setting or not so let's just force it to true for now
     }
 }
 
@@ -180,22 +218,26 @@ static void ExportSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandle
     buf->reserve(buf->size() + (48 * 12));
     buf->appendf("[%s][general]\n", handler->TypeName);
     
-    buf->appendf("ExportPathsFull=%i\n",            g_ExportSettings.exportPathsFull);
-    buf->appendf("ExportAssetDeps=%i\n",            g_ExportSettings.exportAssetDeps);
-    buf->appendf("DisableCacheNames=%i\n",          g_ExportSettings.disableCachedNames);
+    buf->appendf("ExportPathsFull=%i\n",            g_rsxSettings.exportPathsFull);
+    buf->appendf("ExportAssetDeps=%i\n",            g_rsxSettings.exportAssetDeps);
+    buf->appendf("DisableCacheNames=%i\n",          g_rsxSettings.disableCachedNames);
 
-    buf->appendf("ExportTextureNameSetting=%u\n",   g_ExportSettings.exportTextureNameSetting);
-    buf->appendf("ExportNormalRecalcSetting=%u\n",  g_ExportSettings.exportNormalRecalcSetting);
-    buf->appendf("ExportMaterialTextures=%i\n",     g_ExportSettings.exportMaterialTextures);
+    buf->appendf("ExportTextureNameSetting=%u\n",   g_rsxSettings.exportTextureNameSetting);
+    buf->appendf("ExportNormalRecalcSetting=%u\n",  g_rsxSettings.exportNormalRecalcSetting);
+    buf->appendf("ExportMaterialTextures=%i\n",     g_rsxSettings.exportMaterialTextures);
 
-    buf->appendf("QCMajorVersion=%u\n",             g_ExportSettings.qcMajorVersion);
-    buf->appendf("QCMinorVersion=%u\n",             g_ExportSettings.qcMinorVersion);
+    buf->appendf("QCMajorVersion=%u\n",             g_rsxSettings.qcMajorVersion);
+    buf->appendf("QCMinorVersion=%u\n",             g_rsxSettings.qcMinorVersion);
 
-    buf->appendf("ExportRigSequences=%i\n",         g_ExportSettings.exportRigSequences);
-    buf->appendf("ExportSeqAnimData=%i\n",          g_ExportSettings.exportSeqAnimData);
-    buf->appendf("ExportModelSkin=%i\n",            g_ExportSettings.exportModelSkin);
-    buf->appendf("ExportTruncatedMaterials=%i\n",   g_ExportSettings.exportModelMatsTruncated);
-    buf->appendf("ExportQCIFiles=%i\n",             g_ExportSettings.exportQCIFiles);
+    buf->appendf("ExportRigSequences=%i\n",         g_rsxSettings.exportRigSequences);
+    buf->appendf("ExportSeqAnimData=%i\n",          g_rsxSettings.exportSeqAnimData);
+    buf->appendf("ExportModelSkin=%i\n",            g_rsxSettings.exportModelSkin);
+    buf->appendf("ExportTruncatedMaterials=%i\n",   g_rsxSettings.exportModelMatsTruncated);
+    buf->appendf("ExportQCIFiles=%i\n",             g_rsxSettings.exportQCIFiles);
+
+    buf->appendf("UseOrigScriptExportExtensions=%i\n", g_rsxSettings.useOrigScriptExportExtensions);
+
+    buf->appendf("BridgePortNum=%i\n", g_rsxSettings.bridgePort);
 
     buf->appendf("\n");
 }
@@ -238,14 +280,14 @@ static void PreviewSettings_WriteAll(ImGuiContext* const ctx, ImGuiSettingsHandl
     buf->appendf("\n");
 }
 
-bool ImGuiCustomTextFilter::Draw(const char* label, float width)
+bool ImGuiCustomTextFilter::Draw(const char* label, const char* hint, float width)
 {
     if (width != 0.0f)
     {
         ImGui::SetNextItemWidth(width);
     }
 
-    const bool valChanged = ImGui::InputText(label, &inputBuf);
+    const bool valChanged = ImGui::InputTextWithHint(label, hint, &inputBuf);
     if (valChanged)
     {
         Build();
@@ -712,6 +754,125 @@ void ImGuiExt::ProgressBarCentered(float fraction, const ImVec2& size_arg, const
         if (ImGui::Button("Cancel"))
             event->fnCancelEvents(event);
     }
+}
+
+bool ImGuiExt::Timeline(const char* strId, float currentTime, float endTime, size_t endFrame, const std::vector<AudioMarker_s>& markers, const ImVec2& size_arg, size_t* o_seekFrame)
+{
+    if (g_pImGuiHandler->NoImGui())
+        return false;
+
+    using namespace ImGui;
+
+    ImGuiWindow* window = GetCurrentWindow();
+    if (window->SkipItems)
+        return false;
+
+    ImGuiContext& g = *GImGui;
+    const ImGuiStyle& style = g.Style;
+
+    const ImGuiID id = window->GetID(strId);
+
+    const ImVec2 pos = window->DC.CursorPos;
+    const ImVec2 size = CalcItemSize(size_arg, CalcItemWidth(), g.FontSize + style.FramePadding.y * 2.0f);
+    ImRect bb(pos, pos + size);
+    ItemSize(size, style.FramePadding.y);
+    if (!ItemAdd(bb, 0))
+        return false;
+
+    bool timelineHovered;
+    bool held;
+    ButtonBehavior(bb, id, &timelineHovered, &held);
+
+    // Render
+    RenderFrame(bb.Min, bb.Max, GetColorU32(ImGuiCol_FrameBg), true, style.FrameRounding);
+    bb.Expand(ImVec2(-style.FrameBorderSize, -style.FrameBorderSize));
+
+    const float fraction = endTime != 0.f ? ImSaturate(currentTime / endTime) : 0.f;
+    RenderRectFilledRangeH(window->DrawList, bb, GetColorU32(ImGuiCol_PlotHistogram), 0.0f, fraction, style.FrameRounding);
+
+    constexpr float markerLineThickness = 1.5f;
+    constexpr float markerArrowSize = 5.f;
+
+    size_t hoveredMarker = UINT64_MAX;
+    float shortestDistanceToMarker = 5.f; // max distance to a marker is 5px
+
+    if (endFrame != 0)
+    {
+        if (timelineHovered)
+        {
+            const float mouseX = g.IO.MousePos.x;
+
+            size_t i = 0;
+
+            // Precalculate which marker is hovered
+            for (auto& marker : markers)
+            {
+                const float markerFrac = static_cast<float>(marker.framePosition) / endFrame;
+                const float markerX = ImLerp(bb.Min.x, bb.Max.x, ImSaturate(markerFrac));
+                const float distance = ImFabs(mouseX - (markerX + (markerLineThickness/2.f)));
+
+                if (distance < shortestDistanceToMarker)
+                {
+                    hoveredMarker = i;
+                    shortestDistanceToMarker = distance;
+                }
+
+                i++;
+            }
+        }
+        
+        size_t i = 0;
+
+        window->DrawList->PushClipRect(bb.Min, bb.Max, true);
+        for (auto& marker : markers)
+        {
+            const float markerFrac = static_cast<float>(marker.framePosition) / endFrame;
+
+            // lerping or larping
+            const float markerX = ImLerp(bb.Min.x, bb.Max.x, ImSaturate(markerFrac));
+
+            const ImU32 markerColour = hoveredMarker == i ? GetColorU32(ImGuiCol_PlotLinesHovered) : GetColorU32(ImGuiCol_PlotLines);
+
+            // Adjust the marker colour based on if we have passed this marker or not
+            const ImU32 adjustedColour = fraction > markerFrac ? (markerColour & 0xFFFFFF) | 0x4f000000 : markerColour;
+
+            // Line
+            window->DrawList->AddLine(ImVec2(markerX, bb.Min.y), ImVec2(markerX, bb.Max.y), adjustedColour, markerLineThickness);
+        
+            // Arrow
+            window->DrawList->AddTriangleFilled(
+                ImVec2(markerX - (markerArrowSize / 2.f), bb.Min.y),
+                ImVec2(markerX + (markerArrowSize / 2.f) + (markerLineThickness / 2.f), bb.Min.y),
+                ImVec2(markerX + (markerLineThickness / 2.f), bb.Min.y + markerArrowSize),
+                adjustedColour
+            );
+        
+            i++;
+        }
+        window->DrawList->PopClipRect();
+    }
+
+    // If the timeline is clicked, jump to the frame at the position that was clicked
+    if (held)
+    {
+        size_t seekFrame = 0;
+        if (hoveredMarker != UINT64_MAX)
+            seekFrame = markers.at(hoveredMarker).framePosition;
+        else
+        {
+            const float mouseX = g.IO.MousePos.x;
+            const float distance = mouseX - bb.Min.x;
+
+            const float seekFraction = distance / size.x;
+
+            seekFrame = static_cast<size_t>(seekFraction * endFrame);
+        }
+
+        *o_seekFrame = seekFrame;
+    }
+
+
+    return held;
 }
 
 ImGuiHandler::ImGuiHandler()

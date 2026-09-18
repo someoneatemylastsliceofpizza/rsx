@@ -24,6 +24,36 @@ void GroupPathByExtension(PathExtensionArray_t* pathsByExtension, const std::fil
         (*pathsByExtension)[CAsset::ContainerType::MDL].emplace_back(path.string());
     else if (extension == ".bpk")
         (*pathsByExtension)[CAsset::ContainerType::BP_PAK].emplace_back(path.string());
+    else if (extension == ".vpk")
+        (*pathsByExtension)[CAsset::ContainerType::VPK].emplace_back(path.string());
+}
+
+// Update "load asset type" settings for all type bindings according to whether they are specified in the --loadwhitelist param
+static void CLI_HandleAssetTypeWhitelist(const CCommandLine* const cli)
+{
+    if (!cli)
+        return;
+
+    if (!IS_NOGUI(cli))
+        return;
+
+    if(cli->HasParam("--loadwhitelist"))
+    {
+        for (auto& [fourCC, binding] : g_assetData.m_assetTypeBindings)
+        {
+            binding._loadAssetType = true;
+        }
+    }
+    else
+    {
+        const std::unordered_set<uint32_t> filterTypes = CLI_GetCommaSeparatedAssetTypes(cli, "--loadwhitelist");
+
+        for (auto& [fourCC, binding] : g_assetData.m_assetTypeBindings)
+        {
+            binding._loadAssetType = filterTypes.contains(fourCC);
+        }
+    }
+
 }
 
 static void HandleFileLoad(std::vector<std::string> filePaths, HandleFileLoadCallback_t cb = nullptr, const CCommandLine* const cli = nullptr)
@@ -43,9 +73,10 @@ static void HandleFileLoad(std::vector<std::string> filePaths, HandleFileLoadCal
                     GroupPathByExtension(&pathsByExtension, dirEntry.path());
             }
         }
-        else
-            GroupPathByExtension(&pathsByExtension, fsPath);
+        else GroupPathByExtension(&pathsByExtension, fsPath);
     }
+
+    CLI_HandleAssetTypeWhitelist(cli);
 
     g_assetData.m_validate = cli && cli->HasParam("-validate");
     g_assetData.m_validateAssetLoading = cli && cli->HasParam("-validateload");
@@ -70,6 +101,9 @@ static void HandleFileLoad(std::vector<std::string> filePaths, HandleFileLoadCal
         case CAsset::ContainerType::BP_PAK:
             HandleBPKLoad(pathsByExtension[i]);
             break;
+        case CAsset::ContainerType::VPK:
+            HandleVPKLoad(pathsByExtension[i]);
+            break;
         }
     }
     
@@ -90,7 +124,7 @@ bool FilterAssetsByType_CommandLine(
     const std::vector<CGlobalAssetData::AssetLookup_t>& assetsIn,
     std::vector<CGlobalAssetData::AssetLookup_t>& assetsOut)
 {
-    std::vector<uint32_t> filterTypes = GetExportFilterTypes(cli);
+    std::unordered_set<uint32_t> filterTypes = CLI_GetCommaSeparatedAssetTypes(cli, "--exporttypes");
     if (filterTypes.size() != 0)
     {
         printf("\nEXPORT: Filtering assets for export using type string \"%s\" (%lld valid type%s)\n", cli->GetParamValue("--exporttypes"), filterTypes.size(), filterTypes.size() == 1 ? "" : "s");
@@ -186,7 +220,7 @@ void OnCLILoadComplete(const CCommandLine* const cli)
             assets = filteredAssets;
 
         if (!assets.empty())
-            CThread(HandleExportAllPakAssets, &assets, g_ExportSettings.exportAssetDeps).join();
+            CThread(HandleExportAllPakAssets, &assets, g_rsxSettings.exportAssetDeps).join();
         else
             Log("No assets to export!\n");
     }
@@ -252,7 +286,7 @@ void HandleOpenFileDialog(const HWND windowHandle)
 
     openFileName.lStructSize = sizeof(OPENFILENAMEA);
     openFileName.hwndOwner = windowHandle;
-    openFileName.lpstrFilter = "reSource Asset Files (*.rpak, *.mbnk, *.mdl)\0*.RPAK;*.MBNK;*.MDL;*.BPK\0";
+    openFileName.lpstrFilter = "reSource Asset Files (*.rpak, *.mbnk, *.mdl, *.bpk, *_dir.vpk)\0*.RPAK;*.MBNK;*.MDL;*.BPK;*_DIR.VPK\0";
     openFileName.lpstrFile = fileNames->Buffer();
     openFileName.nMaxFile = static_cast<DWORD>(CBufferManager::MaxBufferSize());
     openFileName.Flags = OFN_EXPLORER | OFN_FILEMUSTEXIST | OFN_ALLOWMULTISELECT | OFN_NOCHANGEDIR;
@@ -288,5 +322,12 @@ void HandleOpenFileDialog(const HWND windowHandle)
     g_BufferManager.RelieveBuffer(fileNames);
 
     // We are done with pak loading.
+    inJobAction = false;
+}
+
+void Bridge_HandleLoad(std::vector<std::string> filePaths)
+{
+    inJobAction = true;
+    HandleFileLoad(std::move(filePaths));
     inJobAction = false;
 }

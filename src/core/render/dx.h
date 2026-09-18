@@ -243,6 +243,16 @@ struct CBufModelInstance
 };
 static_assert(sizeof(CBufModelInstance) == 208);
 
+struct DXBone_t
+{
+    const char* name;
+    Vector pos;
+    Quaternion quat;
+    Vector scale;
+
+    int parent;
+};
+
 class CDXDrawData
 {
 public:
@@ -253,7 +263,7 @@ public:
         TEXTURE,
     };
 
-    CDXDrawData() = default;
+    CDXDrawData() : bones() {};
 
     ~CDXDrawData()
     {
@@ -271,6 +281,10 @@ public:
 
     std::vector<DXMeshDrawData_t> meshBuffers;
     std::vector<DXMeshDrawData_DebugPrim_t> debugPrims;
+
+    std::vector<DXBone_t> bones;
+    std::vector<XMMATRIX> boneInverseBindMatrices;
+
 
     ID3D11Buffer* transformsBuffer;
     ID3D11Buffer* modelInstanceBuffer;
@@ -311,10 +325,12 @@ public:
     void DrawLine(const Vector& start, const Vector& end, uint32_t col, bool noDepthTest = false, float width = 1.f, float duration = 0.f);
 };
 
+#define CAMERA_DEFAULT_DISTANCE 25.f
+
 class CDXCamera
 {
 public:
-    CDXCamera() : distanceToPivot(25.f) {};
+    CDXCamera() : distanceToPivot(CAMERA_DEFAULT_DISTANCE) {};
 
     void Move(float dt);
 

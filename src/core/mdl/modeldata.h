@@ -32,6 +32,9 @@ struct VertexWeight_ForShader_t
 	}
 };
 
+#define VERT_PARSE_EXTRAWEIGHT	0x1
+#define VERT_PARSE_BONES_1024	0x2
+
 struct Vertex_t
 {
 	Vector position;
@@ -47,7 +50,9 @@ struct Vertex_t
 
 	Vertex_t(float x, float y, float z) : position(x, y, z), normalPacked(0), color(0xFF, 0xFF, 0xFF, 0xFF), texcoord(INFINITY, INFINITY), weightCount(0), weightIndex(0), blendData(0) {};
 
-	static bool ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, bool bigBones, int& weightIdx);
+	static void ParseWeightFromVG_256(Vertex_t* const vert, VertexWeight_t* const weights, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, const uint8_t parseFlags, int& weightIdx, int& offset);
+	static void ParseWeightFromVG_1024(Vertex_t* const vert, VertexWeight_t* const weights, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, const uint8_t parseFlags, int& weightIdx, int& offset);
+	static bool ParseVertexFromVG(Vertex_t* const vert, VertexWeight_t* const weights, Vector2D* const texcoords, ModelMeshData_t* const mesh, const char* const rawVertexData, const void* const boneMap, const vvw::mstudioboneweightextra_t* const weightExtra, const uint8_t parseFlags, int& weightIdx);
 
 	// Generic (basic data shared between them)
 	static void ParseVertexFromVTX(Vertex_t* const vert, Vector2D* const texcoords, ModelMeshData_t* const mesh, const vvd::mstudiovertex_t* const pVerts, const Vector4D* const pTangs, const Color32* const pColors, const Vector2D* const pUVs, const int origId);
@@ -403,22 +408,6 @@ struct ModelBodyPart_t
 	FORCEINLINE bool IsPreviewEnabled() const { return previewEnabled; };
 };
 
-struct ModelAnimSequence_t
-{
-	enum class eType : uint8_t
-	{
-		UNLOADED = 0,
-		DIRECT,
-		RIG,
-	};
-
-	CPakAsset* asset;
-	uint64_t guid;
-	eType type;
-
-	FORCEINLINE const bool IsLoaded() const { return type != eType::UNLOADED; };
-};
-
 struct ModelPoseParam_t
 {
 	ModelPoseParam_t() : name(nullptr), flags(0), start(0.0f), end(0.0f), loop(0.0f) {}
@@ -618,9 +607,6 @@ public:
 
 	std::vector<ModelBodyPart_t> bodyParts;
 
-	// Resolved vector of animation sequences for use in model preview
-	// [rika]: unused, not quite sure why this was added
-	//std::vector<ModelAnimSequence_t> animSequences;
 	ModelSeq_t* localSequences;
 	int numLocalSequences;
 	int numExternalSequences;

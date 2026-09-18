@@ -6,7 +6,7 @@
 #include <thirdparty/imgui/imgui.h>
 
 extern CDXParentHandler* g_dxHandler;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadUIImageAtlasAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -131,7 +131,7 @@ void PostLoadUIImageAtlasAsset(CAssetContainer* const pak, CAsset* const asset)
     {
         std::string atlasName = "ui_image_atlas/" + std::string(txtrAsset->name) + ".rpak";
 
-        //assertm(pakAsset->data()->guids == RTech::StringToGuid(atlasName.c_str()), "hashed name for atlas did not match existing guid\n");
+        //assertm(pakAsset->data()->guid == RTech::StringToGuid(atlasName.c_str()), "hashed name for atlas did not match existing guid\n");
 
         pakAsset->SetAssetName(atlasName, true);
     }
@@ -478,11 +478,11 @@ bool ExportUIImageAtlasAsset(CAsset* const asset, const int setting)
     UIImageAtlasAsset* const uiAsset = reinterpret_cast<UIImageAtlasAsset*>(pakAsset->extraData());
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path atlasPath(asset->GetAssetName());
 
     // truncate paths?
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(atlasPath.parent_path().string());
     else
         exportPath.append(s_PathPrefixUIMG);

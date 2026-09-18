@@ -7,7 +7,7 @@
 #include <thirdparty/imgui/misc/imgui_utility.h>
 
 extern CDXParentHandler* g_dxHandler;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 // ui font header
 inline const uint32_t UIFontHeader::GetTextureIndexFromUnicodeMap(int unicode) const
@@ -86,7 +86,10 @@ const uint32_t UIFontHeader::TextureFromUnicode(int unicode) const
         unicode = FONT_UTF16_BOX;
     }
 
+#if (PAKLOAD_DEBUG == PAKLOAD_DEBUG_VERBOSE)
+    // very spammy print
     Log("Font %s doesn't have the code point U+%04X which is required to display a missing glyph.\n", name, FONT_UTF16_BOX);
+#endif
 
     return FONT_TEXTURE_IDX_INVALID;
 }
@@ -117,7 +120,7 @@ const uint32_t UIFontHeader::TextureFromGlyph(int glyph) const
         glyph = LOBYTE(errorGlyph) << 16; // 
     }
 
-    Log("Font %s doesn't have the glyph index %u which is required to display a missing glyph.\n", name, 0u);
+    Log("FONT: %s doesn't have the glyph index %u which is required to display a missing glyph.\n", name, 0u);
 
     return FONT_TEXTURE_IDX_INVALID;
 }
@@ -343,7 +346,7 @@ void PostLoadUIFontAtlasAsset(CAssetContainer* const pak, CAsset* const asset)
 
 	if (txtrAsset->name)
 	{
-		std::string atlasName = "ui_font_atlas/" + std::string(txtrAsset->name) + ".rpak";
+		const std::string atlasName = "ui_font_atlas/" + std::string(txtrAsset->name) + ".rpak";
 
 		assertm(pakAsset->data()->guid == RTech::StringToGuid(atlasName.c_str()), "hashed name for atlas did not match existing guid\n");
 
@@ -762,11 +765,11 @@ bool ExportUIFontAtlasAsset(CAsset* const asset, const int setting)
     UIFontAtlasAsset* const uiAsset = reinterpret_cast<UIFontAtlasAsset*>(pakAsset->extraData());
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path atlasPath(pakAsset->GetAssetName());
 
     // truncate paths?
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(atlasPath.parent_path().string());
     else
         exportPath.append(s_PathPrefixFONT);

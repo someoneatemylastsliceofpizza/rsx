@@ -8,6 +8,11 @@
 
 class CDXDrawData;
 
+enum RSXSettings_RMDL_e
+{
+	SET_EXPORT_SEQUENCES = 0,
+};
+
 // pak data
 struct ModelAssetHeader_v8_t
 {
@@ -182,6 +187,8 @@ enum class eMDLVersion : int
 	VERSION_19,
 	VERSION_19_1,
 	VERSION_19_2,
+	VERSION_19_3,
+	VERSION_20,
 
 	// bleh
 	VERSION_52,
@@ -202,9 +209,11 @@ static const std::map<int, eMDLVersion> s_mdlVersionMap
 	{ 17, eMDLVersion::VERSION_17 },
 	{ 18, eMDLVersion::VERSION_18 },
 	{ 19, eMDLVersion::VERSION_19 },
+	{ 20, eMDLVersion::VERSION_20 },
 };
 
 constexpr uint64_t s_MdlTimeStamp_V19_1 = 0x01DC1DF805C28000; // 09/05/2025 00:00:00
+constexpr uint64_t s_MdlTimeStamp_V19_3 = 0x01DD1EED32D6C000; // 07/29/2026 00:00:00
 
 inline const eMDLVersion GetModelVersionFromAsset(CPakAsset* const asset, CPakFile* const pak)
 {
@@ -274,6 +283,9 @@ inline const eMDLVersion GetModelVersionFromAsset(CPakAsset* const asset, CPakFi
 	}
 	case eMDLVersion::VERSION_19:
 	{
+		if (pak->header()->createdTime >= s_MdlTimeStamp_V19_3)
+			return eMDLVersion::VERSION_19_3;
+
 		const r5::studiohdr_v19_2_t* const pHdr = reinterpret_cast<const r5::studiohdr_v19_2_t* const>(pMDL);
 		if (pHdr->sourceFilenameOffset == sizeof(r5::studiohdr_v19_2_t))
 			return eMDLVersion::VERSION_19_2;
@@ -410,6 +422,8 @@ public:
 			break;
 		}
 		case eMDLVersion::VERSION_19_2:
+		case eMDLVersion::VERSION_19_3:
+		case eMDLVersion::VERSION_20:
 		{
 			parsedData = ModelParsedData_t(reinterpret_cast<r5::studiohdr_v19_2_t*>(data), cpu->dataSizePhys, cpu->dataSizeModel);
 			break;

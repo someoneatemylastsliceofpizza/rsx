@@ -652,6 +652,20 @@ struct PakLoadedAssetTypeInfo_t
     // the same file. Used for validation mode.
     bool inconsistentHeaderSize : 1;
     bool inconsistentVersions : 1;
+
+    // Merge loaded asset type infos from two different paks into a single struct. This is used for the CLI pak validation mode
+    // Excludes:
+    //   - offsetToNextHeaderInCollection - validation doesn't care
+    //   - headerSize                     - should be the same and gets flagged separately if not
+    void Merge(const PakLoadedAssetTypeInfo_t& rhs)
+    {
+        assetCount += rhs.assetCount;
+
+        inconsistentHeaderSize |= rhs.inconsistentHeaderSize;
+        inconsistentVersions |= rhs.inconsistentVersions;
+
+        version = std::max(version, rhs.version);
+    }
 };
 #endif // #if defined(PAKLOAD_PATCHING_ANY)
 
@@ -662,6 +676,8 @@ public:
     ~CPakFile();
 
     const CAsset::ContainerType GetContainerType() const { return CAsset::ContainerType::PAK; };
+
+    void ContainerPreviewUI() const;
 
     const bool ParseFileBuffer(const std::string& path, bool* alreadyLoaded);
     const bool DecompressFileBuffer(const char* fileBuffer, std::shared_ptr<char[]>* outBuffer);
@@ -848,6 +864,7 @@ private:
 
     void ProcessAssets();
 
+    void SortProcessedAssets();
     void HandleOwnPostLoad();
 
 public:
@@ -1264,7 +1281,6 @@ public:
 private:
     CPakFile* const pak() { return static_cast<CPakFile*>(m_containerFile); };
     const CPakFile* const pak() const { return static_cast<const CPakFile*>(m_containerFile); };
-
 };
 
 

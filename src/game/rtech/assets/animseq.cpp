@@ -12,7 +12,7 @@
 #include <thirdparty/imgui/misc/imgui_utility.h>
 
 extern CBufferManager g_BufferManager;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 extern bool ExportAnimSeqDataAsset(CAsset* const asset, const int setting);
 
 void LoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
@@ -35,8 +35,6 @@ void LoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 	}
 	case eSeqVersion::VERSION_7_1:
 	{
-		asset->SetAssetVersion({ 7, 1 });
-
 		AnimSeqAssetHeader_v7_1_t* hdr = reinterpret_cast<AnimSeqAssetHeader_v7_1_t*>(pakAsset->header());
 		seqAsset = new AnimSeqAsset(hdr, streamEntry, ver);
 		break;
@@ -46,15 +44,10 @@ void LoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 	case eSeqVersion::VERSION_10:
 	case eSeqVersion::VERSION_11:
 	case eSeqVersion::VERSION_12:
-	{
-		AnimSeqAssetHeader_v8_t* hdr = reinterpret_cast<AnimSeqAssetHeader_v8_t*>(pakAsset->header());
-		seqAsset = new AnimSeqAsset(hdr, streamEntry, ver);
-		break;
-	}
 	case eSeqVersion::VERSION_12_1:
+	case eSeqVersion::VERSION_13:
+	case eSeqVersion::VERSION_14:
 	{
-		asset->SetAssetVersion({ 12, 1 });
-
 		AnimSeqAssetHeader_v8_t* hdr = reinterpret_cast<AnimSeqAssetHeader_v8_t*>(pakAsset->header());
 		seqAsset = new AnimSeqAsset(hdr, streamEntry, ver);
 		break;
@@ -63,25 +56,35 @@ void LoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 		return;
 	}
 
+	switch (ver)
+	{
+	case eSeqVersion::VERSION_7_1:
+	{
+		asset->SetAssetVersion({ 7, 1 });
+
+		break;
+	}
+	case eSeqVersion::VERSION_12_1:
+	{
+		asset->SetAssetVersion({ 12, 1 });
+
+		break;
+	}
+	default:
+		break;
+	}
+
 	pakAsset->SetAssetName(seqAsset->name, true);
 	pakAsset->setExtraData(seqAsset);
 }
 
-void PostLoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
+bool AnimSeq_ParseExtraData(CPakAsset* pakAsset)
 {
-	UNUSED(container);
-
-	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
-
-	if (!pakAsset->hasExtraData())
-		return;
-
-#ifndef DEBUG_NO_ASEQ_POSTLOAD
 	AnimSeqAsset* const seqAsset = pakAsset->extraData<AnimSeqAsset*>();
 	// do not parse this animation if there is no skeleton, if we go to export a sequence from a model/rig that has not been parsed, we will have to parse on export.
 	// this also means this sequence will not export data when exported standalone
 	if (nullptr == seqAsset->parentRig && nullptr == seqAsset->parentModel)
-		return;
+		return false;
 
 	const std::vector<ModelBone_t>* bones = nullptr;
 
@@ -123,13 +126,27 @@ void PostLoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 		break;
 	}
 	case eSeqVersion::VERSION_12_1:
-	{// [rika]: parse the animseq's raw data size in post load if we couldn't determine a bone count before.
+	{
+		// [rika]: parse the animseq's raw data size in post load if we couldn't determine a bone count before.
 		if (seqAsset->dataSize == 0)
 			seqAsset->UpdateDataSize_V12_1(static_cast<int>(bones->size()));
 
 		// [rika]: I love changing assets, but never ever would change a version!
-		ParseAnimSeqDataForSeq(&seqAsset->seqdesc, bones->size());
+		ParseAnimSeqDataForSeq(&seqAsset->seqdesc, bones->size(), ANIM_BONEFLAG_BITS_4);
 		ParseSequence(&seqAsset->seqdesc, bones, AnimdataFuncType_t::ANIM_FUNC_STALL_ANIMDATA);
+
+		break;
+	}
+	case eSeqVersion::VERSION_13:
+	case eSeqVersion::VERSION_14:
+	{
+		// [rika]: parse the animseq's raw data size in post load if we couldn't determine a bone count before.
+		if (seqAsset->dataSize == 0)
+			seqAsset->UpdateDataSize_V12_1(static_cast<int>(bones->size()));
+
+		// [rika]: I love changing assets, but never ever would change a version!
+		ParseAnimSeqDataForSeq(&seqAsset->seqdesc, bones->size(), ANIM_BONEFLAG_BITS_6);
+		ParseSequence(&seqAsset->seqdesc, bones, AnimdataFuncType_t::ANIM_FUNC_STALL_ANIMDATA, ANIM_BONEFLAG_BITS_6);
 
 		break;
 	}
@@ -139,6 +156,21 @@ void PostLoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
 
 	// the sequence has been parsed for exporting
 	seqAsset->animationParsed = true;
+	return true;
+}
+
+void PostLoadAnimSeqAsset(CAssetContainer* const container, CAsset* const asset)
+{
+	UNUSED(container);
+	//UNUSED(asset);
+
+	CPakAsset* pakAsset = static_cast<CPakAsset*>(asset);
+
+	if (!pakAsset->hasExtraData())
+		return;
+
+#ifndef DEBUG_NO_ASEQ_POSTLOAD
+	AnimSeq_ParseExtraData(pakAsset);
 #endif
 }
 
@@ -218,7 +250,7 @@ static bool ExportRawAnimSeqAsset(CPakAsset* const asset, const AnimSeqAsset* co
 		depOut.close();
 	}
 
-	if (g_ExportSettings.exportSeqAnimData)
+	if (g_rsxSettings.exportSeqAnimData)
 	{
 		for (size_t i = 0; i < numDependencies; i++)
 		{
@@ -288,7 +320,12 @@ bool ExportAnimSeqFromAsset(const std::filesystem::path& exportPath, const std::
 			if (nullptr == animSeq)
 			{
 				Log("RSEQ DEP: animseq asset 0x%llX was not loaded, skipping...\n", guid);
+				continue;
+			}
 
+			if (!animSeq->GetPostLoadStatus())
+			{
+				Log("RSEQ DEP: animseq assets were not loaded when this pak was loaded. skipping...\n");
 				continue;
 			}
 
@@ -332,12 +369,12 @@ bool ExportAnimSeqAsset(CAsset* const asset, const int setting)
 	}
 
 	// Create exported path + asset path.
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+	std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
 	const std::filesystem::path seqPath(animSeqAsset->name);
 	const std::string seqStem(seqPath.stem().string());
 
 	// truncate paths?
-	if (g_ExportSettings.exportPathsFull)
+	if (g_rsxSettings.exportPathsFull)
 		exportPath.append(seqPath.parent_path().string());
 	else
 		exportPath.append(std::format("{}/{}", s_PathPrefixASEQ, seqStem));

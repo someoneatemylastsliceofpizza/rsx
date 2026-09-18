@@ -4,6 +4,7 @@
 #include <game/rtech/utils/utils.h>
 #include <game/bsp/bsp.h>
 #include <thirdparty/imgui/imgui.h>
+#include <thirdparty/imgui/misc/imgui_memory_editor.h>
 
 void LoadWrapAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -107,6 +108,38 @@ std::unique_ptr<char[]> GetWrapAssetData(CAsset* const asset, uint64_t* outSize)
     return wrapData;
 }
 
+// eugh
+std::string Wrap_GetPathWithSwappedExtensions(const WrapAsset* const wrapAsset, const std::string& origAssetName)
+{
+    // size of the asset path excluding the first folder and the VM extension (ui, client, server)
+    const uint64_t realPathSize = static_cast<uint64_t>(wrapAsset->pathSize) - wrapAsset->skipFirstFolderPos;
+
+    if (origAssetName.length() == realPathSize)
+        return origAssetName;
+
+    const std::string vmExtension = origAssetName.substr(realPathSize);
+
+    const std::string assetPathWithoutVMExt = origAssetName.substr(0, realPathSize);
+
+    std::filesystem::path fsPath(assetPathWithoutVMExt);
+
+    const std::string realExtension = fsPath.extension().string();
+
+    fsPath.replace_extension(vmExtension);
+    fsPath += realExtension;
+
+    return fsPath.string();
+}
+
+// if there is a VM extension at the end of the file name, cut it off
+// 
+// usually, wrapAsset->pathSize will equal everything up until ".ui" or ".client"
+// but the asset name already has the first folder cut off by this point, so we have to account for that in this check
+inline void Wrap_StripVMExtensionFromPath(WrapAsset* const wrapAsset, std::string& assetPath)
+{
+    if (assetPath.length() != (wrapAsset->pathSize - wrapAsset->skipFirstFolderPos))
+        assetPath = assetPath.substr(0, wrapAsset->pathSize - wrapAsset->skipFirstFolderPos);
+}
 
 void PostLoadWrapAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -116,30 +149,24 @@ void PostLoadWrapAsset(CAssetContainer* const pak, CAsset* const asset)
     WrapAsset* const wrapAsset = reinterpret_cast<WrapAsset*>(pakAsset->extraData());
 
     // Default wrap asset type is "unknown"; basically if the file's extension isn't registered against a file type, it's previewed as binary data
-    wrapAsset->type = WrapAssetType_e::UNKNOWN;
+    wrapAsset->type = VPKFileType_e::UNKNOWN;
 
     std::string assetName = asset->GetAssetName();
-
-    // if there is a VM extension at the end of the file name, cut it off
-    // 
-    // usually, wrapAsset->pathSize will equal everything up until ".ui" or ".client"
-    // but the asset name already has the first folder cut off by this point, so we have to account for that in this check
-    if (assetName.length() != (wrapAsset->pathSize - wrapAsset->skipFirstFolderPos))
-        assetName = assetName.substr(0, wrapAsset->pathSize - wrapAsset->skipFirstFolderPos);
+    
+    Wrap_StripVMExtensionFromPath(wrapAsset, assetName);
 
     std::filesystem::path assetPath = std::filesystem::path(assetName);
-    std::string extension = assetPath.extension().string();
+    const std::string extension = assetPath.extension().string();
 
-    if (auto it = s_wrapAssetExtensions.find(extension); it != s_wrapAssetExtensions.end())
+    // wrapped filesystem is the successor of vpk so we use VPK types, not the other way around
+    if (auto it = s_vpkFileTypes.find(extension); it != s_vpkFileTypes.end())
         wrapAsset->type = it->second;
 
     switch (wrapAsset->type)
     {
-    case WrapAssetType_e::BSP:
+    case VPKFileType_e::BSP:
     {
-#if defined(HAS_BSP_SUPPORT)
-        wrapAsset->parsedDataType = eWrapAssetParsedDataType::BSP;
-
+#if (HAS_BSP_SUPPORT)
         std::unique_ptr<char[]> wrapData = GetWrapAssetData(asset, nullptr);
 
         CBSPData* bspData = new CBSPData(assetPath.stem().string());
@@ -150,7 +177,6 @@ void PostLoadWrapAsset(CAssetContainer* const pak, CAsset* const asset)
         break;
     }
     }
-
 }
 
 bool ExportWrapAsset(CAsset* const asset, const int setting)
@@ -161,13 +187,17 @@ bool ExportWrapAsset(CAsset* const asset, const int setting)
     const WrapAsset* const wrapAsset = reinterpret_cast<WrapAsset*>(pakAsset->extraData());
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory() / fourCCToString(asset->GetAssetType());
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory() / fourCCToString(asset->GetAssetType());
     if (!CreateDirectories(exportPath))
     {
         assertm(false, "Failed to create asset type directory.");
         return false;
     }
-    exportPath.append(asset->GetAssetName());
+
+    if (g_rsxSettings.useOrigScriptExportExtensions)
+        exportPath.append(asset->GetAssetName());
+    else
+        exportPath.append(Wrap_GetPathWithSwappedExtensions(wrapAsset, asset->GetAssetName()));
 
     if (!CreateDirectories(exportPath.parent_path()))
     {
@@ -177,9 +207,8 @@ bool ExportWrapAsset(CAsset* const asset, const int setting)
 
     switch (wrapAsset->type)
     {
-    case WrapAssetType_e::UNKNOWN:
-    case WrapAssetType_e::TEXT:
-    default:
+    case VPKFileType_e::UNKNOWN:
+    case VPKFileType_e::TEXT:
     {
         StreamIO wrapOut;
 
@@ -197,15 +226,15 @@ bool ExportWrapAsset(CAsset* const asset, const int setting)
 
         // If the file has been detected as a text file and the last byte of the data is a null terminator, adjust the file size so we don't write it
         // In theory, the last byte will ALWAYS be a null byte, but it doesn't hurt to double check
-        if (wrapAsset->type == WrapAssetType_e::TEXT && wrapData[wrapOutSize - 1] == '\0')
+        if (wrapAsset->type == VPKFileType_e::TEXT && wrapData[wrapOutSize - 1] == '\0')
             wrapOutSize--;
 
         wrapOut.write(wrapData.get(), wrapOutSize);
         wrapOut.close();
         break;
     }
-#if defined(HAS_BSP_SUPPORT)
-    case eWrapAssetParsedDataType::BSP:
+#if (HAS_BSP_SUPPORT)
+    case WrapAssetType_e::BSP:
     {
         StreamIO wrapOut;
 
@@ -224,23 +253,21 @@ bool ExportWrapAsset(CAsset* const asset, const int setting)
         break;
     }
 #endif
+    default:
+    {
+        unreachable();
+        break;
+    }
     }
 
     return true;
 }
 
-static WrapAsset* lastPreviewedWrapAsset = nullptr;
-void* Wrap_PreviewText(CAsset* const asset, WrapAsset* const wrapAsset, const bool firstFrameForAsset)
+void* Wrap_PreviewTextOrBinary(CAsset* const asset, WrapAsset* const wrapAsset, const bool firstFrameForAsset)
 {
-    if (firstFrameForAsset)
+    // this leaks memory
+    if (firstFrameForAsset && !wrapAsset->rawData)
     {
-        // someone please delete VS off my pc
-        if (lastPreviewedWrapAsset && lastPreviewedWrapAsset != wrapAsset)
-        {
-            delete[] lastPreviewedWrapAsset->parsedData;
-            lastPreviewedWrapAsset->parsedData = nullptr;
-        }
-
         uint64_t wrapOutSize = 0;
         std::unique_ptr<char[]> wrapData = GetWrapAssetData(asset, &wrapOutSize);
 
@@ -250,15 +277,24 @@ void* Wrap_PreviewText(CAsset* const asset, WrapAsset* const wrapAsset, const bo
             return nullptr;
         }
 
-        // i really hate this
-        wrapAsset->parsedData = wrapData.release();
-
-        lastPreviewedWrapAsset = wrapAsset;
+        wrapAsset->rawData = std::move(wrapData);
     }
 
-    if (ImGui::BeginChild("Text Preview", ImVec2(-1, -1), true, ImGuiWindowFlags_HorizontalScrollbar))
+    if (ImGui::BeginChild("##Wrap Preview", ImVec2(-1, -1), true, ImGuiWindowFlags_HorizontalScrollbar))
     {
-        ImGui::TextUnformatted(reinterpret_cast<const char*>(wrapAsset->parsedData));
+        if(wrapAsset->type == VPKFileType_e::TEXT)
+            ImGui::TextUnformatted(reinterpret_cast<const char*>(wrapAsset->rawData.get()));
+        else
+        {
+            static MemoryEditor wrapPreview;
+
+            wrapPreview.ReadOnly = true;
+            wrapPreview.OptShowDataPreview = true;
+            //wrapPreview.UserData = &previewData;
+            //wrapPreview.BgColorFn = UIArgData_BGColorCallback;
+
+            wrapPreview.DrawContents(wrapAsset->rawData.get(), wrapAsset->dcmpSize);
+        }
     }
     ImGui::EndChild();
 
@@ -277,16 +313,19 @@ void* PreviewWrapAsset(CAsset* const asset, const bool firstFrameForAsset)
 
     switch (wrapAsset->type)
     {
-    case WrapAssetType_e::TEXT:
-        return Wrap_PreviewText(asset, wrapAsset, firstFrameForAsset);
-#if defined(HAS_BSP_SUPPORT)
+#if !(HAS_BSP_SUPPORT) // if no bsp-specific support, just show it as a binary file
+    case VPKFileType_e::BSP:
+#endif
+    case VPKFileType_e::TEXT:
+    case VPKFileType_e::UNKNOWN:
+        return Wrap_PreviewTextOrBinary(asset, wrapAsset, firstFrameForAsset);
+#if (HAS_BSP_SUPPORT)
     case WrapAssetType_e::BSP:
         return reinterpret_cast<CBSPData*>(wrapAsset->parsedData)->ConstructPreviewData();
 #endif
-    case WrapAssetType_e::UNKNOWN:
     default:
     {
-        ImGui::Text("Preview for WRAP assets is currently only supported for text files");
+        ImGui::Text("Preview for WRAP assets is currently not supported for BSP files");
         return nullptr;
     }
     }

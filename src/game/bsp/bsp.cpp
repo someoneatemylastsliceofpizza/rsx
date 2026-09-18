@@ -297,8 +297,7 @@ void CBSPData::PopulateFromPakAsset(CPakAsset* pakAsset, void* bspData)
 				m_lumpSizes[i] = header->lumps[i].filelen;
 
 				const std::string lumpAssetName = std::format("maps/{}.bsp.{:04X}.bsp_lump.client", m_mapName, i);
-				const uint64_t lumpAssetGuid = RTech::StringToGuid(lumpAssetName.c_str());
-				CAsset* lumpAsset = g_assetData.FindAssetByGUID(lumpAssetGuid);
+				CAsset* lumpAsset = g_assetData.FindAsset(lumpAssetName);
 
 				if (lumpAsset)
 					SetLumpData(i, GetWrapAssetData(lumpAsset, nullptr));
@@ -506,7 +505,7 @@ CDXDrawData* CBSPData::ConstructPreviewData()
 				std::string materialName = &texStringLumpData[tex.nameStringTableID];
 				materialName = "material/" + materialName + "_wldc.rpak";
 
-				CAsset* materialAsset = g_assetData.FindAssetByGUID(RTech::StringToGuid(materialName.c_str()));
+				CAsset* materialAsset = g_assetData.FindAsset(materialName);
 				if (materialAsset)
 				{
 					CPakAsset* matlPakAsset = reinterpret_cast<CPakAsset*>(materialAsset);

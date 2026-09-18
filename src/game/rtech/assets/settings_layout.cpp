@@ -4,7 +4,7 @@
 #include <game/rtech/utils/utils.h>
 #include <imgui.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 static const char* const s_PathPrefixSTLT = s_AssetTypePaths.find(AssetType_t::STLT)->second;
 
 uint32_t SettingsLayout_GetFieldAlignmentForType(const eSettingsFieldType type)
@@ -390,13 +390,13 @@ bool ExportSettingsLayout(CAsset* const asset, const int setting)
 
 	SettingsLayoutAsset* const hdr = pakAsset->extraData<SettingsLayoutAsset* const>();
 
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+	std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
 	const std::filesystem::path stltPath(asset->GetAssetName());
 
 	// +1 to skip the '/' at the end.
 	const size_t relativePathIndex = exportPath.string().length()+1;
 
-	if (g_ExportSettings.exportPathsFull)
+	if (g_rsxSettings.exportPathsFull)
 		exportPath.append(stltPath.parent_path().string());
 	else
 		exportPath.append(s_PathPrefixSTLT);

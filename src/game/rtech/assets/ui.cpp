@@ -8,7 +8,7 @@
 #include <thirdparty/imgui/misc/imgui_utility.h>
 #include <thirdparty/imgui/misc/imgui_memory_editor.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadUIAsset(CAssetContainer* const container, CAsset* const asset)
 {
@@ -152,6 +152,8 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
         previewData.clear();
         previewData.resize(uiAsset->argCount);
 
+        uiAsset->minArgDataOffset = 0xFFFF;
+
         for (int i = 0; i < uiAsset->argCount; i++)
         {
             UIPreviewData_t& argPreviewData = previewData.at(i);
@@ -167,7 +169,7 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
             argPreviewData.offset = argData->dataOffset; // [rika]: dataOffset on 'none' type args is just 0
             argPreviewData.hash = argData->shortHash; // use if we have no name
 
-            if (argData->dataOffset < uiAsset->minArgDataOffset)
+            if (argData->type != UI_ARG_TYPE_NONE && argData->dataOffset < uiAsset->minArgDataOffset)
                 uiAsset->minArgDataOffset = argData->dataOffset;
         }
     }
@@ -354,19 +356,143 @@ void* PreviewUIAsset(CAsset* const asset, const bool firstFrameForAsset)
         rawDataEdit.BgColorFn = UIArgData_BGColorCallback;
 
         rawDataEdit.DrawContents(uiAsset->argDefaultValues, uiAsset->argDefaultValueSize);
-
-
     }
     ImGui::EndChild();
 
     return nullptr;
 }
 
-enum eUIExportSetting
+enum class eUIExportSetting : int
 {
     TXT, // just the arguments in text form
-    RUI, // im making up formats now
+    CPP, // erm
 };
+
+bool ExportUIAsset_CPP(CAsset* const asset, UIAsset* const uiAsset, std::filesystem::path& exportPath)
+{
+    UNUSED(asset);
+
+    std::vector<UIPreviewData_t> exportData;
+    exportData.clear();
+    exportData.resize(uiAsset->argCount);
+
+    uiAsset->minArgDataOffset = 0xFFFF;
+    for (int i = 0; i < uiAsset->argCount; i++)
+    {
+        UIPreviewData_t& argPreviewData = exportData.at(i);
+        const UIAssetArg_t* const argData = &uiAsset->args[i];
+
+        assertm(argData->dataOffset < uiAsset->argDefaultValueSize, "potentially invalid data");
+
+        argPreviewData.index = i;
+        argPreviewData.name = uiAsset->argNames ? uiAsset->argNames + argData->nameOffset : nullptr;
+        argPreviewData.value.rawptr = (reinterpret_cast<char*>(uiAsset->argDefaultValues) + argData->dataOffset);
+        argPreviewData.type = argData->type;
+        argPreviewData.typeStr = s_UIArgTypeNames[argData->type];
+        argPreviewData.offset = argData->dataOffset; // [rika]: dataOffset on 'none' type args is just 0
+        argPreviewData.hash = argData->shortHash; // use if we have no name
+
+        if (argData->type != UI_ARG_TYPE_NONE && argData->dataOffset < uiAsset->minArgDataOffset)
+            uiAsset->minArgDataOffset = argData->dataOffset;
+    }
+
+    std::sort(exportData.begin(), exportData.end(), [](UIPreviewData_t& a, UIPreviewData_t& b) {
+        return a.offset < b.offset;
+    });
+
+    const std::string hashConstantString = std::format("{}/{}",
+        uiAsset->argClusterCount == 1 ? uiAsset->argClusters->hashMul : -1,
+        uiAsset->argClusterCount == 1 ? uiAsset->argClusters->hashAdd : -1);
+
+    const std::string typeName = std::format("{}_s", uiAsset->name);
+
+    std::stringstream rawtext;
+
+    rawtext <<
+        "#include <cassert>\n\n" <<
+        (!uiAsset->argNames ? "// !!WARNING!! This UI asset does not contain variable names.\n// The members of the data structure are instead named using a unique hash value.\n\n" : "") <<
+
+        "#ifndef SHADER_DATA\n"
+        "#define SHADER_DATA(sz) char __shader_data[sz]; void* ShaderData(int ofs) { assert(ofs < sz); return reinterpret_cast<char*>(this) + ofs; };\n"
+        "#endif\n\n"
+        "#ifndef VAR_PAD\n"
+        "#define CONCAT(a, b) XCONCAT(a, b)\n"
+        "#define XCONCAT(a, b) a ## b\n"
+        "#define VAR_PAD(n) char CONCAT(pad_, __COUNTER__)[n];\n"
+        "#endif\n\n" <<
+
+        (!uiAsset->argNames ? std::format("// Hash Constants: {}\n", hashConstantString) : "") <<
+        "// Hash Table Size: " << uiAsset->argClusters->argCount << "\n"
+
+        "struct " << typeName << "\n"
+        "{\n";
+
+    // If the minArgDataOffset is 65535, there are no args. If there are no args, the entire argDefaultValueSize amount is part of SHADER_DATA
+    const uint32_t shaderDataSize = uiAsset->minArgDataOffset != 0xFFFF ? uiAsset->minArgDataOffset : uiAsset->argDefaultValueSize;
+
+    if(uiAsset->minArgDataOffset > 0)
+        rawtext << "\tSHADER_DATA(" << shaderDataSize << "); // The first " << shaderDataSize << " bytes of this struct are unannotated* constant values that are accessed by internal rendering code. (*no names, no type info)\n\n";
+
+    size_t i = 0;
+    for (auto& it : exportData)
+    {
+        if (it.type == UI_ARG_TYPE_NONE)
+            continue;
+
+        rawtext << "\t" << s_typeNamesCPP[it.type] << " " << (it.name ? it.name : std::format("var_{:x}_{}", it.hash, it.index)) << "; " << "// @ " << it.offset << "\n";
+
+        //if (i != 0)
+        //{
+        //    auto& lastVar = exportData[i - 1];
+        //    const int8_t uiHandleSize = asset->GetContainerFile<CPakFile>()->header()->version == 7 ? sizeof(const char*) : sizeof(uint32_t);
+        //    const int8_t typeSize = lastVar.type == UI_ARG_TYPE_UIHANDLE ? uiHandleSize : s_typeSizes[lastVar.type];
+        //    const int lastVarOffsetEnd = lastVar.offset + typeSize;
+        //    
+        //    if (lastVarOffsetEnd != it.offset)
+        //        rawtext << "\tVAR_PAD(" << it.offset - lastVarOffsetEnd << ");\n";
+        //}
+
+        i++;
+    }
+
+    const int extraDataSize = uiAsset->ruiDataStructSize - uiAsset->argDefaultValueSize;
+    rawtext << "\n"
+        "\tchar unk_data[" << extraDataSize << "];\n\n"
+        "\ttemplate<typename T>\n"
+        "\tT* data(int offset)\n"
+        "\t{\n"
+        "\t\tassert(offset < sizeof(*this));\n"
+        "\t\treturn reinterpret_cast<T*>((char*)this + offset);\n"
+        "\t};\n"
+        
+        "};\n\n"
+        "void " << uiAsset->name << "(UIScriptApi_s* api, UIConstantVars_s* consts, UIInstance_s* inst, " << typeName << "* data)\n"
+        "{\n"
+        "\t// Not implemented\n"
+        "};\n\n";
+
+    for (auto& it : exportData)
+    {
+        if (it.type == UI_ARG_TYPE_NONE)
+            continue;
+
+        rawtext << "static_assert(offsetof(" << typeName << ", " << (it.name ? it.name : std::format("var_{:x}_{}", it.hash, it.index)) << ") == " << it.offset << ");\n";
+    }
+
+    exportPath.replace_extension(".cpp");
+
+    StreamIO out;
+    if (!out.open(exportPath.string(), eStreamIOMode::Write))
+    {
+        assertm(false, "Failed to open file for write.");
+        return false;
+    }
+
+    out.write(rawtext.str().c_str(), rawtext.str().length());
+    out.close();
+
+    return true;
+}
 
 static const char* const s_PathPrefixUI = s_AssetTypePaths.find(AssetType_t::UI)->second;
 bool ExportUIAsset(CAsset* const asset, const int setting)
@@ -375,11 +501,10 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
     UIAsset* const uiAsset = reinterpret_cast<UIAsset*>(pakAsset->extraData());
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path uiPath(asset->GetAssetName());
 
-    // truncate paths?
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(uiPath.parent_path().string());
     else
         exportPath.append(s_PathPrefixUI);
@@ -392,7 +517,7 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
 
     exportPath.append(uiPath.stem().string());
 
-    switch (setting)
+    switch ((eUIExportSetting)setting)
     {
     case eUIExportSetting::TXT:
     {
@@ -404,6 +529,9 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
             rawtext << std::format("// ArgCluster {} Hash Consts: {}/{}\n", i, ac->hashMul, ac->hashAdd);
         }
 
+        uiAsset->minArgDataOffset = 0xFFFF;
+
+
         for (int i = 0; i < uiAsset->argCount; i++)
         {
             const UIAssetArg_t* const arg = &uiAsset->args[i];
@@ -411,12 +539,17 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
             if (arg->type == UIAssetArgType_t::UI_ARG_TYPE_NONE)
                 continue;
 
+            if (arg->dataOffset < uiAsset->minArgDataOffset)
+                uiAsset->minArgDataOffset = arg->dataOffset;
+
+            rawtext << std::format("{} ", s_typeNamesRUI[arg->type]);
+
             if (uiAsset->argNames)
                 rawtext << (uiAsset->argNames + arg->nameOffset);
             else
                 rawtext << std::format("{:x}", arg->shortHash);
 
-            rawtext << std::format(":{}\t", arg->nameOffset);
+            rawtext << std::format("@{}\t", arg->dataOffset);
 
             UIAssetArgValue_t argValue = { .rawptr = (reinterpret_cast<char*>(uiAsset->argDefaultValues) + arg->dataOffset) };
 
@@ -507,6 +640,8 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
             rawtext << "\n";
         }
 
+        rawtext << "// Shader Data Size: " << uiAsset->minArgDataOffset << "\n";
+
         exportPath.replace_extension(".txt");
 
         StreamIO out;
@@ -521,11 +656,9 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
 
         return true;
     }
-    case eUIExportSetting::RUI:
+    case eUIExportSetting::CPP:
     {
-
-
-        return true;
+        return ExportUIAsset_CPP(asset, uiAsset, exportPath);
     }
     default:
         break;
@@ -536,7 +669,7 @@ bool ExportUIAsset(CAsset* const asset, const int setting)
 
 void InitUIAssetType()
 {
-    static const char* settings[] = { "TXT", "RUI (WIP)" };
+    static const char* settings[] = { "TXT", "C++" };
     AssetTypeBinding_t type =
     {
         .name = "RUI",

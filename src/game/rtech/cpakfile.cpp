@@ -48,6 +48,75 @@ CPakFile::~CPakFile()
     if (nullptr != m_pAssetsInternal) delete[] m_pAssetsInternal;
 }
 
+void CPakFile::ContainerPreviewUI() const
+{
+    constexpr ImGuiTableFlags tableFlags =
+        ImGuiTableFlags_Resizable | ImGuiTableFlags_Reorderable | ImGuiTableFlags_Hideable
+        | ImGuiTableFlags_RowBg | ImGuiTableFlags_Borders | ImGuiTableFlags_NoBordersInBody
+        | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit;
+
+    bool anyInconsistencies = false;
+    if (ImGui::BeginTable("Asset Table", 4, tableFlags, ImVec2(0,400)))
+    {
+        ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed | ImGuiTableColumnFlags_NoHide, 0.0f, 0);
+        ImGui::TableSetupColumn("Version", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, 1);
+        ImGui::TableSetupColumn("Header Size", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, 2);
+        ImGui::TableSetupColumn("#", ImGuiTableColumnFlags_NoResize | ImGuiTableColumnFlags_WidthFixed, 0.0f, 3);
+        ImGui::TableSetupScrollFreeze(1, 1);
+
+        ImGui::TableHeadersRow();
+
+        for (auto& [fourCC, typeInfo] : loadedAssetTypeInfo)
+        {
+            if (typeInfo.inconsistentHeaderSize || typeInfo.inconsistentVersions)
+                anyInconsistencies = true;
+
+            ImGui::PushID(fourCC);
+
+            ImGui::TableNextRow(ImGuiTableRowFlags_None, 0.0f);
+
+            if (ImGui::TableSetColumnIndex(0))
+            {
+                bool colouredText = false;
+
+                const AssetType_t assetType = static_cast<AssetType_t>(fourCC);
+                if (s_AssetTypeColours.contains(assetType))
+                {
+                    colouredText = true;
+
+                    const Color4& col = s_AssetTypeColours.at(assetType);
+                    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(col.r, col.g, col.b, col.a));
+                }
+
+                ImGui::Text("%s", fourCCToString(fourCC).c_str());
+
+                if (colouredText)
+                    ImGui::PopStyleColor();
+            }
+
+            if (ImGui::TableSetColumnIndex(1))
+                ImGui::Text("%i%c", typeInfo.version, typeInfo.inconsistentVersions ? '*' : ' ');
+
+            if (ImGui::TableSetColumnIndex(2))
+                ImGui::Text("%u%c", typeInfo.headerSize, typeInfo.inconsistentHeaderSize ? '*' : ' ');
+
+            if (ImGui::TableSetColumnIndex(3))
+                ImGui::Text("%lld", typeInfo.assetCount);
+
+            ImGui::PopID();
+        }
+
+        ImGui::EndTable();
+    }
+
+    if (anyInconsistencies)
+    {
+        ImGui::PushFont(NULL, 14.f);
+        ImGui::TextDisabled("* This file has assets with more than one different value for the same asset type. **This is not normal**\n* If this is your own custom RPak file, you should rebuild it");
+        ImGui::PopFont();
+    }
+}
+
 struct PakFileLoadState_t
 {
     PakFileLoadState_t() : fileBuffer(NULL), pageStart(0), pageEnd(0) {};
@@ -65,11 +134,12 @@ const bool CPakFile::ParseFileBuffer(const std::string& path, bool* alreadyLoade
     else
         SetFilePath(path);
 
-    if (!ParseFromFile(GetFilePath().string(), this->m_Buf))
-        return false;
+    // Pre-parse the header to make sure that we don't waste time decompressing data needlessly
 
-    // parse our initial header (subject to change)
-    ParsePakFileHeader(m_Buf.get());
+    std::shared_ptr<char[]> headerBuf;
+    FileSystem::ReadFileData(GetFilePath().string(), &headerBuf, 0x80); // 0x80 bytes is the max rpak header size
+
+    ParsePakFileHeader(headerBuf.get());
 
     // Block loading of effects.rpak and effects(01).rpak from R5Reloaded.
     // These files are very strange and cause some problems, so to allow for bulk processing of R5Reloaded's pak files,
@@ -83,6 +153,12 @@ const bool CPakFile::ParseFileBuffer(const std::string& path, bool* alreadyLoade
 
         return false;
     }
+
+    if (!ParseFromFile(GetFilePath().string(), this->m_Buf))
+        return false;
+
+    // parse our initial header (subject to change)
+    ParsePakFileHeader(m_Buf.get());
 
     switch (header()->version)
     {
@@ -200,8 +276,8 @@ const bool CPakFile::LoadNonPatched()
         int remainingLength = m_pHeader->optStreamingFilesBufSize;
         while (remainingLength > 0)
         {
-            std::string streamingFilePath = reinterpret_cast<char*>(buf + offset);
-            std::filesystem::path fileInfo(streamingFilePath);
+            const std::string streamingFilePath = reinterpret_cast<char*>(buf + offset);
+            const std::filesystem::path fileInfo(streamingFilePath);
 
             ParseStreamedFile(fileInfo.filename().string(), true);
             const int length = static_cast<int>(streamingFilePath.length());
@@ -511,7 +587,7 @@ const bool CPakFile::ParseFromFile(const std::string& filePath, std::shared_ptr<
 {
 #if (PAKLOAD_DEBUG == PAKLOAD_DEBUG_LOG)
     const std::filesystem::path fsPath(filePath);
-    Log("RPAK: Decompressing pak file: %s\n", fsPath.filename().string().c_str());
+    Log("RPAK: Decompressing pak file: \"%s\"\n", fsPath.filename().string().c_str());
 #endif // #if (PAKLOAD_DEBUG >= PAKLOAD_DEBUG_LOG)
 
     if (!FileSystem::ReadFileData(filePath, &buf))
@@ -531,8 +607,14 @@ const bool CPakFile::ParseStreamedFile(const std::string& fileName, bool opt)
     if (fileName.length() == 0)
         return false;
 
+    // don't parse starpaks if we are in validation mode
+    if (!DO_ASSET_LOAD())
+        return false;
+
+    // TODO: make this cache entries in g_assetData instead of rediscovering for every pak...
+
 #if (PAKLOAD_DEBUG == PAKLOAD_DEBUG_LOG)
-    Log("LOAD: parsing starpak file from path: ('%s')\n", fileName.c_str());
+    Log("STRM: Parsing starpak file: \"%s\"\n", fileName.c_str());
 #endif // #if (PAKLOAD_DEBUG >= PAKLOAD_DEBUG_LOG)
 
     struct StarPakStreamEntry_t
@@ -542,13 +624,13 @@ const bool CPakFile::ParseStreamedFile(const std::string& fileName, bool opt)
     };
     std::unique_ptr<StarPak_t> pakEntry = std::make_unique<StarPak_t>();
 
-    std::string path = std::filesystem::path(GetFilePath()).parent_path().string().append("\\" + fileName);
+    const std::string path = std::filesystem::path(GetFilePath()).parent_path().string().append("\\" + fileName);
     pakEntry.get()->filePath = path;
 
     StreamIO file;
     if (!file.open(path, eStreamIOMode::Read))
     {
-        g_assetData.Log_Warning(this, "Failed to find StarPak file \"%s\" on disk. Assets may be missing data", fileName.c_str());
+        g_assetData.Log_Warning(this, "Failed to open StarPak file \"%s\". Assets may be missing data", fileName.c_str());
         return false;
     }
 
@@ -682,7 +764,7 @@ const bool CPakFile::DecompressFileBuffer(const char* fileBuffer, std::shared_pt
     }
     else if (header->flags & PAK_HEADER_FLAGS_ZSTD_ENCODED)
     {
-        g_assetData.Log_Error(this, "Pak file used unsupported ZSTD compression. RSX does not support this compression");
+        g_assetData.Log_Error(this, "Pak file used ZSTD compression. RSX does not support this compression");
 
         delete header;
         return false;
@@ -721,7 +803,7 @@ void CPakFile::CreateHeaderSegmentCollection()
         assetTypeInfo.offsetToNextHeaderInCollection = nextOffsetAligned;
         nextOffsetForAssetTypeHeaders = nextOffsetAligned + (assetTypeInfo.assetCount * assetTypeInfo.headerSize);
 
-        // == Update "HEADER" segment collection ==
+
         SegmentCollection_t* const collection = &this->segmentCollections[SegmentCollection_t::eType::SCT_HEAD];
 
         // The size of the header collection will now be equal to the calculated value for the next offset,
@@ -868,7 +950,6 @@ const bool CPakFile::DecodePatchCommands()
 
             bitbuf->DiscardStoredBits(p.unk[bitbuf->ReadStoredBits(6)]);
 
-            // get the next patch function to execute
             p.patchFunc = g_pakPatchApi[cmd];
 
             if (cmd <= 3u)
@@ -888,7 +969,7 @@ const bool CPakFile::DecodePatchCommands()
             }
         }
 
-#if (PAKLOAD_DEBUG == PAKLOAD_DEBUG_VERBOSE)
+#if (PAKLOAD_DEBUG == PAKLOAD_DEBUG_VERBOSE) // This print is extremely verbose. Do not uncomment unless debugging pak patching
         //Log("PTCH: Patch [%i]\n\tRemaining source bytes: %lld\n\tPatch destination size: %lld\n\tNumber of bytes to skip: %lld\n\tNumber of bytes left in the file buffer: %lld\n", cmd, p.numBytesToPatch, p.patchDestinationSize, p.numBytesToSkip, p.numRemainingFileBufferBytes);
 #endif // #if (PAKLOAD_DEBUG == PAKLOAD_DEBUG_VERBOSE)
 
@@ -928,7 +1009,6 @@ void CPakFile::CalculateLoadedAssetTypeInfo()
 {
     for (int i = 0; i < this->assetCount(); ++i)
     {
-        //const PakAsset_t* const asset = &this->internalAssets()[i];
         void* asset = this->rawAsset(static_cast<size_t>(i));
 
         const uint32_t type = PakAsset_t::Type(asset, this->header()->version);
@@ -978,6 +1058,10 @@ void CPakFile::SortAssetsByHeaderPointer()
 #undef SWAP_DWORDS
     };
 
+    // Calculate the number of assets in this pak that are contained in real new pages.
+    // For non-patched paks (i.e., paks without (XX).rpak), this will be 0.
+    // For any patched paks, this will be any assets that have their header in brand new pages
+    //  instead of in the pages of one of the lower patch versions
     int numAssetsInNewPages = 0;
     for (int i = 0; i < this->assetCount(); ++i)
     {
@@ -993,14 +1077,14 @@ void CPakFile::SortAssetsByHeaderPointer()
 
     const int numOldAssets = this->assetCount() - numAssetsInNewPages;
 
-    // copy all of the assets in new pages to the front of the vector
+    // Copy all of the assets in new pages to the front of the vector
     memcpy(
         tempAssetPointers.data(),
         this->sortedAssetPointers.data() + numOldAssets,
         sizeof(PakAsset*) * numAssetsInNewPages
     );
 
-    // copy all of the assets in old pages to the back of the vector
+    // Copy all of the assets in old pages to the back of the vector
     memcpy(
         tempAssetPointers.data() + numAssetsInNewPages,
         this->sortedAssetPointers.data(),
@@ -1015,26 +1099,38 @@ void CPakFile::SortAssetsByHeaderPointer()
 }
 #endif // #if defined(PAKLOAD_PATCHING_ANY)
 
-static std::vector<uint32_t> postLoadOrder =
-{
-    'rtxt', // Texture first.
-    'gmiu', // UI Atlas after.
-
-    'rdhs', // Shader hdr first.
-    'sdhs', // Shader set after.
-    'ltam', // Material after.
-
-    // [rika]: aseq after arig/model that way the skeleton is set before parsing
-    'gira', // Arig first
-    '_ldm', // Model after
-    'qesa', // Aseq last
-
-};
-
 static std::unordered_map<AssetType_t, std::string> s_ParsedPrefixes(63);
+
+// Sort this pak file's assets in the same way as the global assets. This must happen otherwise postload ranges will fail
+void CPakFile::SortProcessedAssets()
+{
+    std::sort(m_pAssetsProcessed.begin(), m_pAssetsProcessed.end(), [](const CAsset* a, const CAsset* b)
+        {
+            const auto itA = std::find(s_postLoadOrderOverrides.begin(), s_postLoadOrderOverrides.end(), a->GetAssetType());
+            const auto itB = std::find(s_postLoadOrderOverrides.begin(), s_postLoadOrderOverrides.end(), b->GetAssetType());
+
+            // if both types are found in the custom order, compare their positions.
+            if (itA != s_postLoadOrderOverrides.end() && itB != s_postLoadOrderOverrides.end())
+            {
+                return std::distance(s_postLoadOrderOverrides.begin(), itA) < std::distance(s_postLoadOrderOverrides.begin(), itB);
+            }
+
+            // handle cases where types are not in the custom order.
+            if (itA == s_postLoadOrderOverrides.end())
+            {
+                return false; // 'a' is placed after 'b'.
+            }
+            else
+            {
+                return true; // 'b' is placed after 'a'.
+            }
+        });
+}
 
 void CPakFile::HandleOwnPostLoad()
 {
+    this->SortProcessedAssets();
+
     struct TypeRange_t
     {
         uint32_t type;
@@ -1042,27 +1138,28 @@ void CPakFile::HandleOwnPostLoad()
         size_t end;
     };
 
-    // find if type is in custom order.
-    auto isInCustomOrder = [](const uint32_t type) -> bool
+    // check if the specified type is part of the postload order override
+    auto isTypeInPostLoadOrderOverrides = [](const uint32_t type) -> bool
         {
-            return std::ranges::find(postLoadOrder, type) != postLoadOrder.end();
+            return std::ranges::find(s_postLoadOrderOverrides, type) != s_postLoadOrderOverrides.end();
         };
 
     std::vector<TypeRange_t> typeRanges;
     size_t startIndex = 0;
     size_t currentIndex = 0;
 
-    // we will get the ranges now for each prioritized asset.
+    // Since the assets are now sorted according to their postload order, we can determine the start/end of each type range
+    // to allow for processing each of those types at once.
     while (currentIndex < m_pAssetsProcessed.size())
     {
         const uint32_t currentType = m_pAssetsProcessed[currentIndex]->GetAssetType();
-        if (!isInCustomOrder(currentType))
+        if (!isTypeInPostLoadOrderOverrides(currentType))
         {
             ++currentIndex;
             continue;
         }
 
-        // Count range.
+        // Find the end of the range by looping until we find an asset that isn't the same type
         while (currentIndex < m_pAssetsProcessed.size() && m_pAssetsProcessed[currentIndex]->GetAssetType() == currentType)
         {
             ++currentIndex;
@@ -1073,15 +1170,16 @@ void CPakFile::HandleOwnPostLoad()
         startIndex = currentIndex;
     }
 
-    // we only want half of the available threads.
     CParallelTask parallelTask(PARSE_THREAD_COUNT);
 
     std::atomic<uint32_t> assetIdx = 0;
     for (const auto& range : typeRanges)
     {
-        // check if asset is registered and has post load function.
         if (auto it = g_assetData.m_assetTypeBindings.find(range.type); it != g_assetData.m_assetTypeBindings.end() && it->second.postLoadFunc)
         {
+            if (!it->second._loadAssetType)
+                continue;
+
             // to the start of the current asset range.
             assetIdx = static_cast<uint32_t>(range.start);
             parallelTask.addTask([this, range, it, &assetIdx]
@@ -1095,6 +1193,7 @@ void CPakFile::HandleOwnPostLoad()
                             continue;
 
                         CAsset* pakAsset = this->m_pAssetsProcessed[assetToProcess];
+
                         // temp
                         it->second.postLoadFunc(pakAsset->GetContainerFile<CAssetContainer>(), pakAsset);
                         pakAsset->SetPostLoadStatus(true);
@@ -1145,8 +1244,9 @@ void CPakFile::HandleOwnPostLoad()
                     CAsset* const pakAsset = this->m_pAssetsProcessed[assetToProcess];
                     if (auto it = g_assetData.m_assetTypeBindings.find(pakAsset->GetAssetType()); it != g_assetData.m_assetTypeBindings.end() && it->second.postLoadFunc)
                     {
-                        //it->second.postLoadFunc(pAssetLookup->m_asset->pak(), pAssetLookup->m_asset);
-                        // temp
+                        if (!it->second._loadAssetType)
+                            continue;
+
                         it->second.postLoadFunc(pakAsset->GetContainerFile<CAssetContainer>(), pakAsset);
                     }
                     pakAsset->SetPostLoadStatus(true);
@@ -1167,7 +1267,7 @@ void CPakFile::HandleOwnPostLoad()
             }, PARSE_THREAD_COUNT);
 
 #ifndef RTECH_STATIC_LIB
-        const ProgressBarEvent_t* const processingAssetsEvent = g_pImGuiHandler->AddProgressBarEvent("Processing Assets Post Load..", leftOverAssets, &assetIdx, true);
+        const ProgressBarEvent_t* const processingAssetsEvent = g_pImGuiHandler->AddProgressBarEvent("Processing Assets Post Load...", leftOverAssets, &assetIdx, true);
 #endif
         parallelTask.execute();
         parallelTask.wait();
@@ -1207,26 +1307,23 @@ void CPakFile::ProcessAssets()
 
             const std::string prefix = s_AssetTypePaths.contains(type) ? s_AssetTypePaths.find(type)->second : fourCCToString(pAsset->type);
 
-            // note(amos): crashes rarely when s_ParsedPrefixes.find() == s_ParsedPrefixes.end().
-            // crashed on s3's mp_rr_desertlands_64k_x_64k.rpak in debug.
+            // For most asset types, this temporary name will be replaced in the load func call below
             const std::string tempName = std::format("{}/0x{:X}", prefix, pAsset->guid);
 
             CPakAsset* const asset = new CPakAsset(this, pAsset, tempName);
 
             // Load assets as long as we are not in validation mode without -validateload
-            if (!g_assetData.m_validate || g_assetData.m_validateAssetLoading)
+            if (DO_ASSET_LOAD())
             {
                 parallelLoadTask.addTask([this, pAsset, asset] {
                     if (auto it = g_assetData.m_assetTypeBindings.find(pAsset->type); it != g_assetData.m_assetTypeBindings.end())
                     {
-                        if (it->second.loadFunc)
+                        if (it->second._loadAssetType && it->second.loadFunc)
                             it->second.loadFunc(this, asset);
                     }
-
-                    }, 1u);
+                }, 1u);
             }
             
-            // mutex so we can write to m_pakAssets safely.
             std::lock_guard<std::mutex> lock(assetMutex);
             g_assetData.v_assets.push_back({ pAsset->guid, asset });
             m_pAssetsProcessed.push_back(asset);
@@ -1256,28 +1353,31 @@ void CPakFile::ProcessAssets()
 
     parallelLoadTask.execute();
 
-    // we pre-sort each pak for post load callbacks by certain priority order.
-    std::sort(g_assetData.v_assets.begin(), g_assetData.v_assets.end(), [](const CGlobalAssetData::AssetLookup_t& a, const CGlobalAssetData::AssetLookup_t& b)
+    if (DO_ASSET_LOAD())
     {
-        const auto itA = std::find(postLoadOrder.begin(), postLoadOrder.end(), a.m_asset->GetAssetType());
-        const auto itB = std::find(postLoadOrder.begin(), postLoadOrder.end(), b.m_asset->GetAssetType());
+        // we pre-sort each pak for post load callbacks by certain priority order.
+        std::sort(g_assetData.v_assets.begin(), g_assetData.v_assets.end(), [](const CGlobalAssetData::AssetLookup_t& a, const CGlobalAssetData::AssetLookup_t& b)
+        {
+            const auto itA = std::find(s_postLoadOrderOverrides.begin(), s_postLoadOrderOverrides.end(), a.m_asset->GetAssetType());
+            const auto itB = std::find(s_postLoadOrderOverrides.begin(), s_postLoadOrderOverrides.end(), b.m_asset->GetAssetType());
 
-        // if both types are found in the custom order, compare their positions.
-        if (itA != postLoadOrder.end() && itB != postLoadOrder.end())
-        {
-            return std::distance(postLoadOrder.begin(), itA) < std::distance(postLoadOrder.begin(), itB);
-        }
+            // if both types are found in the custom order, compare their positions.
+            if (itA != s_postLoadOrderOverrides.end() && itB != s_postLoadOrderOverrides.end())
+            {
+                return std::distance(s_postLoadOrderOverrides.begin(), itA) < std::distance(s_postLoadOrderOverrides.begin(), itB);
+            }
 
-        // handle cases where types are not in the custom order.
-        if (itA == postLoadOrder.end())
-        {
-            return false; // 'a' is placed after 'b'.
-        }
-        else 
-        {
-            return true; // 'b' is placed after 'a'.
-        }
-    });
+            // handle cases where types are not in the custom order.
+            if (itA == s_postLoadOrderOverrides.end())
+            {
+                return false; // 'a' is placed after 'b'.
+            }
+            else
+            {
+                return true; // 'b' is placed after 'a'.
+            }
+        });
+    }
 
     parallelLoadTask.wait();
 

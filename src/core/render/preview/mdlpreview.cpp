@@ -14,6 +14,7 @@ extern CDXParentHandler* g_dxHandler;
 
 void Preview_Model(CDXDrawData* drawData, float dt)
 {
+
     ID3D11Device* const device = g_dxHandler->GetDevice();
     ID3D11DeviceContext* const ctx = g_dxHandler->GetDeviceContext();
     CDXScene& scene = g_dxHandler->GetScene();
@@ -38,7 +39,7 @@ void Preview_Model(CDXDrawData* drawData, float dt)
     ctx->RSSetState(g_dxHandler->GetRasterizerState());
     ctx->OMSetDepthStencilState(g_dxHandler->GetDepthStencilState(true), 1u);
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if (ADVANCED_MODEL_PREVIEW)
     // Update CBufCommonPerCamera
     g_dxHandler->GetCamera()->CommitCameraDataBufferUpdates();
 
@@ -269,7 +270,10 @@ void Preview_Model(CDXDrawData* drawData, float dt)
         while (iterator != drawData->debugPrims.end())
         {
             if (!iterator->visible)
+            {
+                iterator++;
                 continue;
+            }
 
             ctx->IASetPrimitiveTopology(iterator->primTopology);
 

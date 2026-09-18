@@ -69,6 +69,8 @@ enum class eSeqVersion : int
 	VERSION_11,
 	VERSION_12,
 	VERSION_12_1,
+	VERSION_13,
+	VERSION_14,
 };
 
 static const std::map<int, eSeqVersion> s_seqVersionMap
@@ -79,9 +81,12 @@ static const std::map<int, eSeqVersion> s_seqVersionMap
 	{ 10, eSeqVersion::VERSION_10 },
 	{ 11, eSeqVersion::VERSION_11 },
 	{ 12, eSeqVersion::VERSION_12 },
+	{ 13, eSeqVersion::VERSION_13 },
+	{ 14, eSeqVersion::VERSION_14 },
 };
 
 constexpr uint64_t s_AnimSeqTimeStamp_V12_1 = 0x01DC1DF805C28000; // 09/05/2025 00:00:00
+constexpr uint64_t s_AnimSeqTimeStamp_V13 = 0x01DD1EED32D6C000; // 07/29/2026 00:00:00
 constexpr uint64_t s_AnimRigTimeStamp_V7_V19_2 = 0x1DCD1EAF65B4000; // model v19.2, cascades into animrig, 22nd April 2026 00:00:00 (random time just before the release paks)
 
 inline const eSeqVersion GetAnimSeqVersionFromAsset(CPakAsset* const asset, CPakFile* const pak)
@@ -171,6 +176,8 @@ public:
 			break;
 		}
 		case eSeqVersion::VERSION_12_1:
+		case eSeqVersion::VERSION_13:
+		case eSeqVersion::VERSION_14:
 		{
 			r5::mstudioseqdesc_v18_t* const tmp = reinterpret_cast<r5::mstudioseqdesc_v18_t* const>(data);
 
@@ -360,11 +367,11 @@ private:
 				int sectionlength;
 				const uint8_t* const boneFlagArray = reinterpret_cast<const uint8_t* const>((anim->*pAnimdata)(&lastFrame, &sectionlength));
 
-				const r5::mstudio_rle_anim_t* panim = reinterpret_cast<const r5::mstudio_rle_anim_t*>(&boneFlagArray[ANIM_BONEFLAG_SIZE(boneCount)]);
+				const r5::mstudio_rle_anim_t* panim = reinterpret_cast<const r5::mstudio_rle_anim_t*>(&boneFlagArray[ANIM_BONEFLAG_SIZE_4(boneCount)]);
 
 				for (int j = 0; j < boneCount; j++)
 				{
-					const uint8_t boneFlags = ANIM_BONEFLAGS_FLAG(boneFlagArray, j);
+					const uint8_t boneFlags = ANIM_BONEFLAGS_FLAG_4(boneFlagArray, j);
 
 					if (!(boneFlags & r5::RleBoneFlags_t::STUDIO_ANIM_DATA))
 						continue;
@@ -647,6 +654,8 @@ private:
 		return;
 	}
 };
+
+bool AnimSeq_ParseExtraData(CPakAsset* pakAsset);
 
 bool ExportAnimSeqAsset(CPakAsset* const asset, const int setting, const AnimSeqAsset* const animSeqAsset, const std::filesystem::path& exportPath, const char* const skelName, const std::vector<ModelBone_t>* bones);
 bool ExportAnimSeqFromAsset(const std::filesystem::path& exportPath, const std::string& stem, const char* const name, const int numAnimSeqs, const AssetGuid_t* const animSeqs, const std::vector<ModelBone_t>* const bones);

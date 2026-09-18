@@ -50,7 +50,7 @@ static bool ExportODLAsset(CAsset* const asset, const int setting)
 
     ODLAsset* odlAsset = pakAsset->extraData<ODLAsset*>();
 
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     std::filesystem::path odlPath = asset->GetAssetName();
 
     exportPath.append("odl_asset/");

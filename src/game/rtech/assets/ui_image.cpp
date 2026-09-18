@@ -6,7 +6,7 @@
 #include <core/render/ui/styles.h>
 
 extern CDXParentHandler* g_dxHandler;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadUIImageAsset(CAssetContainer* const pak, CAsset* const asset)
 {
@@ -481,6 +481,20 @@ std::shared_ptr<CTexture> CreateTextureForImage(CPakAsset* const asset, UIImageA
     return std::move(uiTexture);
 };
 
+std::shared_ptr<CTexture> UIIA_GetHighestTexture(CPakAsset* pakAsset, UIImageAsset* uiia)
+{
+
+    const UIImageAsset::QualityData* const qualData = &uiia->resData[eUIImageResType::LQ_RES];
+
+    // in the future, we should probably load LQ only if streamed data is not present ? (since HQ is using LQ data at that point)
+    std::shared_ptr<CTexture> tex = CreateTextureForImage(pakAsset, uiia, qualData, uiia->shouldStream, true);
+
+    if (tex)
+        tex->CreateShaderResourceView(g_dxHandler->GetDevice());
+
+    return tex;
+}
+
 #undef max
 void* PreviewUIImageAsset(CAsset* const asset, const bool firstFrameForAsset)
 {
@@ -743,7 +757,7 @@ bool ExportUIImageAsset(CAsset* const asset, const int setting)
     UIImageAsset* const uiAsset = reinterpret_cast<UIImageAsset*>(pakAsset->extraData());
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory() / fourCCToString(asset->GetAssetType());
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory() / fourCCToString(asset->GetAssetType());
 
     if (!CreateDirectories(exportPath))
     {

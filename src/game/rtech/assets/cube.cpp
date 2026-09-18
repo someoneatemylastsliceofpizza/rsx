@@ -2,7 +2,7 @@
 #include <game/rtech/assets/cube.h>
 #include <imgui.h>
 
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 void LoadCubeAsset(CAssetContainer* const pak, CAsset* const asset)
 {

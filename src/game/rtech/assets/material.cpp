@@ -10,7 +10,7 @@
 #include <core/render/ui/styles.h>
 
 extern CDXParentHandler* g_dxHandler;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 static const char* const s_PathPrefixTXTR = s_AssetTypePaths.find(AssetType_t::TXTR)->second;
 static const size_t s_PathPrefixTXTRSize = sizeof(s_PathPrefixTXTR) - 1; // [rika]: sizeof() includes the null terminator, which we don't need
@@ -931,6 +931,7 @@ void ParseMaterialTextureExportInfo(std::unordered_map<uint32_t, MaterialTexture
         default:
         {
             assertm(false, "name setting invalid (somehow)");
+            unreachable();
 
             break;
         }
@@ -1062,7 +1063,7 @@ bool ExportMaterialStruct(const MaterialAsset* const materialAsset,
     ofs << "\t\"$textures\": {\n";
 
     // [rika]: force guid ?
-    if (!textureInfo.empty() && g_ExportSettings.exportTextureNameSetting != eTextureExportName::TXTR_NAME_GUID)
+    if (!textureInfo.empty() && g_rsxSettings.exportTextureNameSetting != eTextureExportName::TXTR_NAME_GUID)
     {
         size_t i = 0;
         const size_t size = materialAsset->txtrAssets.size();
@@ -1178,7 +1179,7 @@ bool ExportMaterialAsset(CAsset* const asset, const int setting)
     std::filesystem::path exportPath = /*std::filesystem::current_path().append(*/EXPORT_DIRECTORY_NAME/*)*/; // 
 
     // truncate paths?
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(materialPath.parent_path().string());
     else
     {
@@ -1201,10 +1202,10 @@ bool ExportMaterialAsset(CAsset* const asset, const int setting)
         std::filesystem::path texturePath;
         // textures should be exported to 'texture/' instead
         // [rika]: I understand this is for repackaging assets, but it is a bit messy unfortunately.
-        if (g_ExportSettings.exportPathsFull)
+        if (g_rsxSettings.exportPathsFull)
         {
             // [rika]: when 'eTextureExportName::TXTR_NAME_REAL' or 'eTextureExportName::TXTR_NAME_GUID' setting use the short path so GUID textures to go into the base 'texture' folder.
-            const bool useShortPath = (g_ExportSettings.exportTextureNameSetting == eTextureExportName::TXTR_NAME_REAL) || (g_ExportSettings.exportTextureNameSetting == eTextureExportName::TXTR_NAME_GUID);
+            const bool useShortPath = (g_rsxSettings.exportTextureNameSetting == eTextureExportName::TXTR_NAME_REAL) || (g_rsxSettings.exportTextureNameSetting == eTextureExportName::TXTR_NAME_GUID);
 
             texturePath = useShortPath ? s_PathPrefixTXTR : ChangeFirstDirectory(materialPath.parent_path(), "texture");
         }
@@ -1215,11 +1216,11 @@ bool ExportMaterialAsset(CAsset* const asset, const int setting)
             texturePath = exportPath.string().c_str() + truncate;
         }
 
-        ParseMaterialTextureExportInfo(textureNames, materialAsset, texturePath, static_cast<eTextureExportName>(g_ExportSettings.exportTextureNameSetting), g_ExportSettings.exportPathsFull);
+        ParseMaterialTextureExportInfo(textureNames, materialAsset, texturePath, static_cast<eTextureExportName>(g_rsxSettings.exportTextureNameSetting), g_rsxSettings.exportPathsFull);
     }
 
     // [rika]: export the material's textures if we're doing that
-    if (g_ExportSettings.exportMaterialTextures && txtrAssetBinding != g_assetData.m_assetTypeBindings.end() && materialAsset->txtrAssets.size())
+    if (g_rsxSettings.exportMaterialTextures && txtrAssetBinding != g_assetData.m_assetTypeBindings.end() && materialAsset->txtrAssets.size())
         ExportMaterialTextures(txtrAssetBinding->second.e.exportSetting, materialAsset, textureNames);
 
     std::filesystem::path materialExportPath = exportPath;

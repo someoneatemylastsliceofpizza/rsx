@@ -47,12 +47,12 @@ bool ExportAnimSeqDataAsset(CAsset* const asset, const int setting)
 	}
 
 	// Create exported path + asset path.
-	std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+	std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
 	const std::filesystem::path animPath(pakAsset->GetAssetName());
 	const std::string animStem(animPath.stem().string());
 
 	// truncate paths?
-	if (g_ExportSettings.exportPathsFull)
+	if (g_rsxSettings.exportPathsFull)
 		exportPath.append(animPath.parent_path().string());
 	else
 		exportPath.append(std::format("{}/{}", s_PathPrefixASQD, animStem));
@@ -71,7 +71,7 @@ bool ExportAnimSeqDataAsset(CAsset* const asset, const int setting)
 	return true;
 }
 
-void ParseAnimSeqDataForSeq(ModelSeq_t* const seqdesc, const size_t boneCount)
+void ParseAnimSeqDataForSeq(ModelSeq_t* const seqdesc, const size_t boneCount, const uint32_t flagWidth)
 {
 	for (size_t i = 0; i < seqdesc->AnimCount(); i++)
 	{
@@ -118,14 +118,14 @@ void ParseAnimSeqDataForSeq(ModelSeq_t* const seqdesc, const size_t boneCount)
 		}
 
 		const uint8_t* const boneFlagArray = reinterpret_cast<const uint8_t* const>(animdesc->animData + index);
-		const r5::mstudio_rle_anim_t* panim = reinterpret_cast<const r5::mstudio_rle_anim_t*>(&boneFlagArray[ANIM_BONEFLAG_SIZE(boneCount)]);
+		const r5::mstudio_rle_anim_t* panim = reinterpret_cast<const r5::mstudio_rle_anim_t*>(&boneFlagArray[ANIM_BONEFLAG_SIZE(boneCount, flagWidth)]);
 
 		for (size_t bone = 0; bone < boneCount; bone++)
 		{
-			const uint8_t boneFlags = ANIM_BONEFLAGS_FLAG(boneFlagArray, bone);
+			const uint8_t boneFlags = ANIM_BONEFLAGS_FLAG(boneFlagArray, bone, flagWidth);
 
 			// no header for this bone
-			if ((boneFlags & r5::RleBoneFlags_t::STUDIO_ANIM_MASK) == false)
+			if ((boneFlags & r5::RleBoneFlags_t::STUDIO_ANIM_MASK_RELEASE) == false)
 			{
 				continue;
 			}

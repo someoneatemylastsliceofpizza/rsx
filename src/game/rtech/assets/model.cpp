@@ -1,6 +1,7 @@
 #include <pch.h>
 
 #include <game/rtech/assets/model.h>
+#include <game/rtech/assets/animrig.h>
 #include <game/rtech/assets/animseq.h>
 #include <game/rtech/assets/texture.h>
 #include <game/rtech/assets/material.h>
@@ -15,7 +16,7 @@
 #include <immintrin.h>
 
 extern CBufferManager g_BufferManager;
-extern ExportSettings_t g_ExportSettings;
+extern RSXSettings_t g_rsxSettings;
 
 static void ParseModelVertexData_v8(CPakAsset* const asset, ModelAsset* const modelAsset)
 {
@@ -262,6 +263,8 @@ static void ParseModelVertexData_v9(CPakAsset* const asset, ModelAsset* const mo
 
     const uint8_t* boneMap = vgHdr->boneStateChangeCount ? vgHdr->pBoneMap() : s_VertexDataBaseBoneMap; // does this model have remapped bones? use default map if not
 
+    const uint8_t vertexWeightParseFlags = (pStudioHdr->flags & STUDIOHDR_FLAGS_USES_EXTRA_BONE_WEIGHTS) ? VERT_PARSE_EXTRAWEIGHT : 0x0;
+
     for (int lodLevel = 0; lodLevel < vgHdr->lodCount; lodLevel++)
     {
         int lodMeshCount = 0;
@@ -355,7 +358,7 @@ static void ParseModelVertexData_v9(CPakAsset* const asset, ModelAsset* const mo
                     {
                         const char* const vertexData = rawVertexData + (vertIdx * mesh->vertCacheSize);
                         Vector2D* const texcoords = meshData.texcoordCount > 1 ? &meshVertexData->GetTexcoords()[vertIdx * (meshData.texcoordCount - 1)] : nullptr;
-                        Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, false, weightIdx);
+                        Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, vertexWeightParseFlags, weightIdx);
                     }
                     meshData.weightsCount = weightIdx;
                     meshVertexData->AddWeights(nullptr, meshData.weightsCount);
@@ -407,6 +410,8 @@ static void ParseModelVertexData_v12_1(CPakAsset* const asset, ModelAsset* const
     const r5::studiohdr_v12_1_t* const pStudioHdr = reinterpret_cast<r5::studiohdr_v12_1_t*>(modelAsset->data);
 
     const uint8_t* boneMap = pStudioHdr->boneStateCount ? pStudioHdr->pBoneStates() : s_VertexDataBaseBoneMap; // does this model have remapped bones? use default map if not
+
+    const uint8_t vertexWeightParseFlags = (pStudioHdr->flags & STUDIOHDR_FLAGS_USES_EXTRA_BONE_WEIGHTS) ? VERT_PARSE_EXTRAWEIGHT : 0x0;
 
     parsedData->lods.resize(pStudioHdr->lodCount);
     parsedData->bodyParts.resize(pStudioHdr->numbodyparts);
@@ -509,7 +514,7 @@ static void ParseModelVertexData_v12_1(CPakAsset* const asset, ModelAsset* const
                         const vvw::mstudioboneweightextra_t* const weights = mesh->pBoneWeights();
                         const uint16_t* const meshIndexData = mesh->pIndices(); // pointer to all of the index data for this mesh
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if (ADVANCED_MODEL_PREVIEW)
                         meshData.rawVertexData = new char[mesh->vertCacheSize * mesh->vertCount]; // get a pointer to the raw vertex data for use with the game's shaders
 
                         memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize) * mesh->vertCount);
@@ -528,7 +533,7 @@ static void ParseModelVertexData_v12_1(CPakAsset* const asset, ModelAsset* const
                         {
                             char* const vertexData = rawVertexData + (vertIdx * mesh->vertCacheSize);
                             Vector2D* const texcoords = meshData.texcoordCount > 1 ? &meshVertexData->GetTexcoords()[vertIdx * (meshData.texcoordCount - 1)] : nullptr;
-                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, false, weightIdx);
+                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, vertexWeightParseFlags, weightIdx);
                         }
                         meshData.weightsCount = weightIdx;
                         meshVertexData->AddWeights(nullptr, meshData.weightsCount);
@@ -584,6 +589,8 @@ static void ParseModelVertexData_v14(CPakAsset* const asset, ModelAsset* const m
     const r5::studiohdr_v14_t* const pStudioHdr = reinterpret_cast<r5::studiohdr_v14_t*>(modelAsset->data);
 
     const uint8_t* boneMap = pStudioHdr->boneStateCount ? pStudioHdr->pBoneStates() : s_VertexDataBaseBoneMap; // does this model have remapped bones? use default map if not
+
+    const uint8_t vertexWeightParseFlags = (pStudioHdr->flags & STUDIOHDR_FLAGS_USES_EXTRA_BONE_WEIGHTS) ? VERT_PARSE_EXTRAWEIGHT : 0x0;
 
     parsedData->lods.resize(pStudioHdr->lodCount);
     parsedData->bodyParts.resize(pStudioHdr->numbodyparts);
@@ -687,7 +694,7 @@ static void ParseModelVertexData_v14(CPakAsset* const asset, ModelAsset* const m
                         const vvw::mstudioboneweightextra_t* const weights = mesh->pBoneWeights();
                         const uint16_t* const meshIndexData = mesh->pIndices(); // pointer to all of the index data for this mesh
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if (ADVANCED_MODEL_PREVIEW)
                         meshData.rawVertexData = new char[mesh->vertCacheSize * mesh->vertCount]; // get a pointer to the raw vertex data for use with the game's shaders
 
                         memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize) * mesh->vertCount);
@@ -706,7 +713,7 @@ static void ParseModelVertexData_v14(CPakAsset* const asset, ModelAsset* const m
                         {
                             char* const vertexData = rawVertexData + (vertIdx * mesh->vertCacheSize);
                             Vector2D* const texcoords = meshData.texcoordCount > 1 ? &meshVertexData->GetTexcoords()[vertIdx * (meshData.texcoordCount - 1)] : nullptr;
-                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, false, weightIdx);
+                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, vertexWeightParseFlags, weightIdx);
                         }
                         meshData.weightsCount = weightIdx;
                         meshVertexData->AddWeights(nullptr, meshData.weightsCount);
@@ -762,6 +769,8 @@ static void ParseModelVertexData_v16(CPakAsset* const asset, ModelAsset* const m
     const r5::studiohdr_v16_t* const pStudioHdr = reinterpret_cast<r5::studiohdr_v16_t*>(modelAsset->data);
 
     const uint8_t* boneMap = pStudioHdr->boneStateCount ? pStudioHdr->pBoneStates() : s_VertexDataBaseBoneMap; // does this model have remapped bones? use default map if not
+
+    const uint8_t vertexWeightParseFlags = (pStudioHdr->flags & STUDIOHDR_FLAGS_USES_EXTRA_BONE_WEIGHTS) ? VERT_PARSE_EXTRAWEIGHT : 0x0;
 
     parsedData->lods.resize(pStudioHdr->lodCount);
     parsedData->bodyParts.resize(pStudioHdr->numbodyparts);
@@ -892,7 +901,7 @@ static void ParseModelVertexData_v16(CPakAsset* const asset, ModelAsset* const m
                         const vvw::mstudioboneweightextra_t* const weights = mesh->pBoneWeights();
                         const uint16_t* const meshIndexData = mesh->pIndices(); // pointer to all of the index data for this mesh
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if (ADVANCED_MODEL_PREVIEW)
                         meshData.rawVertexData = new char[mesh->vertCacheSize * mesh->vertCount]; // get a pointer to the raw vertex data for use with the game's shaders
 
                         memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize) * mesh->vertCount);
@@ -911,7 +920,7 @@ static void ParseModelVertexData_v16(CPakAsset* const asset, ModelAsset* const m
                         {
                             char* const vertexData = rawVertexData + (vertIdx * mesh->vertCacheSize);
                             Vector2D* const texcoords = meshData.texcoordCount > 1 ? &meshVertexData->GetTexcoords()[vertIdx * (meshData.texcoordCount - 1)] : nullptr;
-                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, false, weightIdx);
+                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, vertexWeightParseFlags, weightIdx);
                         }
                         meshData.weightsCount = weightIdx;
                         meshVertexData->AddWeights(nullptr, meshData.weightsCount);
@@ -969,6 +978,8 @@ static void ParseModelVertexData_v19_2(CPakAsset* const asset, ModelAsset* const
 
     const uint16_t* boneMap = pStudioHdr->boneStateCount ? pStudioHdr->pBoneStates() : s_VertexDataBaseBoneMapButWide; // does this model have remapped bones? use default map if not
 
+    const uint8_t vertexWeightParseFlags = ((pStudioHdr->flags & STUDIOHDR_FLAGS_USES_EXTRA_BONE_WEIGHTS) ? VERT_PARSE_EXTRAWEIGHT : 0x0) | VERT_PARSE_BONES_1024;
+
     parsedData->lods.resize(pStudioHdr->lodCount);
     parsedData->bodyParts.resize(pStudioHdr->numbodyparts);
 
@@ -1098,7 +1109,7 @@ static void ParseModelVertexData_v19_2(CPakAsset* const asset, ModelAsset* const
                         const vvw::mstudioboneweightextra_t* const weights = mesh->pBoneWeights();
                         const uint16_t* const meshIndexData = mesh->pIndices(); // pointer to all of the index data for this mesh
 
-#if defined(ADVANCED_MODEL_PREVIEW)
+#if (ADVANCED_MODEL_PREVIEW)
                         meshData.rawVertexData = new char[mesh->vertCacheSize * mesh->vertCount]; // get a pointer to the raw vertex data for use with the game's shaders
 
                         memcpy(meshData.rawVertexData, rawVertexData, static_cast<uint64_t>(mesh->vertCacheSize) * mesh->vertCount);
@@ -1117,12 +1128,7 @@ static void ParseModelVertexData_v19_2(CPakAsset* const asset, ModelAsset* const
                         {
                             char* const vertexData = rawVertexData + (vertIdx * mesh->vertCacheSize);
                             Vector2D* const texcoords = meshData.texcoordCount > 1 ? &meshVertexData->GetTexcoords()[vertIdx * (meshData.texcoordCount - 1)] : nullptr;
-
-                            // 19.2 has big bones
-                            bool b = Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, true, weightIdx);
-
-                            if (!b)
-                                Log("huh %s\n", modelAsset->name);
+                            Vertex_t::ParseVertexFromVG(&meshVertexData->GetVertices()[vertIdx], &meshVertexData->GetWeights()[weightIdx], texcoords, &meshData, vertexData, boneMap, weights, vertexWeightParseFlags, weightIdx);
                         }
                         meshData.weightsCount = weightIdx;
                         meshVertexData->AddWeights(nullptr, meshData.weightsCount);
@@ -1347,6 +1353,8 @@ void LoadModelAsset(CAssetContainer* const pak, CAsset* const asset)
         break;
     }
     case eMDLVersion::VERSION_19_2:
+    case eMDLVersion::VERSION_19_3:
+    case eMDLVersion::VERSION_20:
     {
         ModelAssetHeader_v16_t* hdr = reinterpret_cast<ModelAssetHeader_v16_t*>(pakAsset->header());
         ModelAssetCPU_v16_t* cpu = reinterpret_cast<ModelAssetCPU_v16_t*>(pakAsset->cpu());
@@ -1415,6 +1423,11 @@ void LoadModelAsset(CAssetContainer* const pak, CAsset* const asset)
         asset->SetAssetVersion({ 19, 2 });
         break;
     }
+    case eMDLVersion::VERSION_19_3:
+    {
+        asset->SetAssetVersion({ 19, 3 });
+        break;
+    }
     default:
     {
         break;
@@ -1456,16 +1469,15 @@ void PostLoadModelAsset(CAssetContainer* const pak, CAsset* const asset)
             CPakAsset* const animSeqAsset = g_assetData.FindAssetByGUID<CPakAsset>(guid);
 
             if (nullptr == animSeqAsset)
-            {
                 continue;
-            }
+
+            if (!animSeqAsset->hasExtraData())
+                continue;
 
             AnimSeqAsset* const animSeq = reinterpret_cast<AnimSeqAsset* const>(animSeqAsset->extraData());
 
             if (nullptr == animSeq)
-            {
                 continue;
-            }
 
             animSeq->parentModel = !animSeq->parentModel ? modelAsset : animSeq->parentModel;
         }
@@ -1521,7 +1533,13 @@ void PostLoadModelAsset(CAssetContainer* const pak, CAsset* const asset)
     case eMDLVersion::VERSION_19_1:
     case eMDLVersion::VERSION_19_2:
     {
-        ParseModelSequenceData_Stall_V19_1(modelAsset->GetParsedData(), reinterpret_cast<char* const>(modelAsset->data));
+        ParseModelSequenceData_Stall_V19_1(modelAsset->GetParsedData(), reinterpret_cast<char* const>(modelAsset->data), ANIM_BONEFLAG_BITS_4);
+        break;
+    }
+    case eMDLVersion::VERSION_19_3:
+    case eMDLVersion::VERSION_20:
+    {
+        ParseModelSequenceData_Stall_V19_1(modelAsset->GetParsedData(), reinterpret_cast<char* const>(modelAsset->data), ANIM_BONEFLAG_BITS_6);
         break;
     }
     default:
@@ -1869,6 +1887,8 @@ static bool ExportModelStreamedData(const ModelAsset* const modelAsset, std::fil
     case eMDLVersion::VERSION_19:
     case eMDLVersion::VERSION_19_1:
     case eMDLVersion::VERSION_19_2:
+    case eMDLVersion::VERSION_19_3:
+    case eMDLVersion::VERSION_20:
     {
         // special case because of compression
         exportPath.replace_extension(extension);
@@ -2013,10 +2033,10 @@ static bool ExportPhysicsModelPhy(const ModelAsset* const modelAsset, std::files
     if (!hdr.phySize)
         return false;
 
-    const int mask = (hdr.contents & g_ExportSettings.exportPhysicsContentsFilter);
-    const bool inFilter = g_ExportSettings.exportPhysicsFilterAND ? mask == static_cast<int>(g_ExportSettings.exportPhysicsContentsFilter) : mask != 0;
+    const int mask = (hdr.contents & g_rsxSettings.exportPhysicsContentsFilter);
+    const bool inFilter = g_rsxSettings.exportPhysicsFilterAND ? mask == static_cast<int>(g_rsxSettings.exportPhysicsContentsFilter) : mask != 0;
 
-    const bool skip = g_ExportSettings.exportPhysicsFilterExclusive ? inFilter : !inFilter;
+    const bool skip = g_rsxSettings.exportPhysicsFilterExclusive ? inFilter : !inFilter;
 
     if (skip)
         return false; // Filtered out.
@@ -2107,9 +2127,9 @@ static bool ExportPhysicsModelBVH(const ModelAsset* const modelAsset, std::files
         data.masks = reinterpret_cast<const uint32_t*>(maskData);
         data.origin = reinterpret_cast<const Vector*>(&collHeader.origin);
         data.scale = collHeader.scale;
-        data.maskFilter = g_ExportSettings.exportPhysicsContentsFilter;
-        data.filterExclusive = g_ExportSettings.exportPhysicsFilterExclusive;
-        data.filterAND = g_ExportSettings.exportPhysicsFilterAND;
+        data.maskFilter = g_rsxSettings.exportPhysicsContentsFilter;
+        data.filterExclusive = g_rsxSettings.exportPhysicsFilterExclusive;
+        data.filterAND = g_rsxSettings.exportPhysicsFilterAND;
 
         const dbvhnode_t* startNode = reinterpret_cast<const dbvhnode_t*>(bvhNodes);
         const uint32_t contents = maskData[startNode->cmIndex];
@@ -2198,12 +2218,12 @@ bool ExportModelAsset(CAsset* const asset, const int setting)
     assertm(modelAsset->name, "No name for model.");
 
     // Create exported path + asset path.
-    std::filesystem::path exportPath = g_ExportSettings.GetExportDirectory();
+    std::filesystem::path exportPath = g_rsxSettings.GetExportDirectory();
     const std::filesystem::path modelPath(modelAsset->name);
     const std::string modelStem(modelPath.stem().string());
 
     // truncate paths?
-    if (g_ExportSettings.exportPathsFull)
+    if (g_rsxSettings.exportPathsFull)
         exportPath.append(modelPath.parent_path().string());
     else
         exportPath.append(std::format("{}/{}", s_PathPrefixMDL, modelStem));
@@ -2216,13 +2236,13 @@ bool ExportModelAsset(CAsset* const asset, const int setting)
 
     const ModelParsedData_t* const parsedData = &modelAsset->parsedData;
 
-    if (g_ExportSettings.exportRigSequences && modelAsset->numAnimSeqs > 0)
+    if (g_rsxSettings.exportRigSequences && modelAsset->numAnimSeqs > 0)
     {
         if (!ExportAnimSeqFromAsset(exportPath, modelStem, modelAsset->name, modelAsset->numAnimSeqs, modelAsset->animSeqs, modelAsset->GetRig()))
             return false;
     }
 
-    if (g_ExportSettings.exportRigSequences && parsedData->NumLocalSeq() > 0)
+    if (g_rsxSettings.exportRigSequences && parsedData->NumLocalSeq() > 0)
     {
         std::filesystem::path outputPath(exportPath);
         outputPath.append(std::format("anims_{}/temp", modelStem));
@@ -2311,4 +2331,6 @@ void InitModelAssetType()
     };
 
     REGISTER_TYPE(type);
+
+    //g_rsxSettings.assetSettings[type.type][RSXSettings_RMDL_e::SET_EXPORT_SEQUENCES] = UISetting_t("ExportSequences=%i", "Export associated sequences", true);
 }

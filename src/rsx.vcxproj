@@ -20,6 +20,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="core\audio\audioplayer.h" />
+    <ClInclude Include="core\bridge\bridge.h" />
     <ClInclude Include="core\cache\cachedb.h" />
     <ClInclude Include="core\crashhandler.h" />
     <ClInclude Include="core\features.h" />
@@ -64,6 +65,7 @@
     <ClInclude Include="core\utils\curlutils.h" />
     <ClInclude Include="core\utils\exportsettings.h" />
     <ClInclude Include="core\utils\fileio.h" />
+    <ClInclude Include="core\utils\gamefinder.h" />
     <ClInclude Include="core\utils\jsonutils.h" />
     <ClInclude Include="core\utils\keyvalue_parser.h" />
     <ClInclude Include="core\utils\ramen.h" />
@@ -73,7 +75,10 @@
     <ClInclude Include="core\version.h" />
     <ClInclude Include="core\window.h" />
     <ClInclude Include="game\asset.h" />
+    <ClInclude Include="game\audio\event.h" />
     <ClInclude Include="game\audio\miles.h" />
+    <ClInclude Include="game\audio\project.h" />
+    <ClInclude Include="game\audio\source.h" />
     <ClInclude Include="game\audio\wavefile.h" />
     <ClInclude Include="game\bluepoint\bp_pakfile.h" />
     <ClInclude Include="game\bsp\bsp.h" />
@@ -126,6 +131,7 @@
     <ClInclude Include="game\rtech\utils\studio\studio_r5_v12.h" />
     <ClInclude Include="game\rtech\utils\studio\studio_r5_v16.h" />
     <ClInclude Include="game\rtech\utils\utils.h" />
+    <ClInclude Include="game\vpk\vpk.h" />
     <ClInclude Include="pch.h" />
     <ClInclude Include="resource.h" />
     <ClInclude Include="thirdparty\imgui\backends\imgui_impl_dx11.h" />
@@ -133,10 +139,13 @@
     <ClInclude Include="thirdparty\imgui\imconfig.h" />
     <ClInclude Include="thirdparty\imgui\imgui.h" />
     <ClInclude Include="thirdparty\imgui\imgui_internal.h" />
+    <ClInclude Include="thirdparty\imgui\implot\implot.h" />
+    <ClInclude Include="thirdparty\imgui\implot\implot_internal.h" />
     <ClInclude Include="thirdparty\imgui\imstb_rectpack.h" />
     <ClInclude Include="thirdparty\imgui\imstb_textedit.h" />
     <ClInclude Include="thirdparty\imgui\imstb_truetype.h" />
     <ClInclude Include="thirdparty\imgui\misc\cpp\imgui_stdlib.h" />
+    <ClInclude Include="thirdparty\imgui\misc\ImGuiNotify.hpp" />
     <ClInclude Include="thirdparty\imgui\misc\imgui_editor.h">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
@@ -153,22 +162,24 @@
     <ClInclude Include="thirdparty\imgui\misc\imgui_utility.h" />
     <ClInclude Include="thirdparty\imgui\misc\imoguizmo.hpp" />
     <ClInclude Include="thirdparty\miniaudio\miniaudio.h" />
+    <ClInclude Include="thirdparty\rad_lzb_simple\rad_lzb_simple.h" />
+    <ClInclude Include="thirdparty\valvefilevdf\vdf_parser.hpp" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="core\audio\audioplayer.cpp" />
+    <ClCompile Include="core\bridge\bridge.cpp" />
     <ClCompile Include="core\cache\cachedb.cpp" />
     <ClCompile Include="core\crashhandler.cpp" />
     <ClCompile Include="core\filehandling\bpk.cpp" />
     <ClCompile Include="core\filehandling\list.cpp" />
     <ClCompile Include="core\filehandling\mbnk.cpp" />
     <ClCompile Include="core\filehandling\validation.cpp" />
+    <ClCompile Include="core\filehandling\valvepak.cpp" />
     <ClCompile Include="core\mdl\animdata.cpp" />
     <ClCompile Include="core\mdl\modeldata.cpp" />
     <ClCompile Include="core\mdl\modeldata_qc.cpp" />
     <ClCompile Include="core\mdl\qc.cpp" />
     <ClCompile Include="core\mdl\smd.cpp" />
-    <ClCompile Include="core\preview\grid.cpp" />
-    <ClCompile Include="core\preview\texpreview.cpp" />
     <ClCompile Include="core\render\dx.cpp" />
     <ClCompile Include="core\render\dxscene.cpp" />
     <ClCompile Include="core\render\dxshader.cpp" />
@@ -188,8 +199,10 @@
     <ClCompile Include="core\mdl\stringtable.cpp" />
     <ClCompile Include="core\render.cpp" />
     <ClCompile Include="core\render\dxutils.cpp" />
+    <ClCompile Include="core\render\preview\grid.cpp" />
     <ClCompile Include="core\render\preview\mdlpreview.cpp" />
     <ClCompile Include="core\render\preview\preview.cpp" />
+    <ClCompile Include="core\render\preview\texpreview.cpp" />
     <ClCompile Include="core\render\ui\itemflav_window.cpp" />
     <ClCompile Include="core\render\ui\log_window.cpp" />
     <ClCompile Include="core\splash.cpp" />
@@ -204,9 +217,13 @@
     <ClCompile Include="core\utils\utils_general.cpp" />
     <ClCompile Include="core\window.cpp" />
     <ClCompile Include="game\asset.cpp" />
+    <ClCompile Include="game\audio\event.cpp" />
+    <ClCompile Include="game\audio\event_action.cpp" />
     <ClCompile Include="game\audio\miles.cpp" />
     <ClCompile Include="game\audio\miles_bcf.cpp" />
     <ClCompile Include="game\audio\miles_rada.cpp" />
+    <ClCompile Include="game\audio\project.cpp" />
+    <ClCompile Include="game\audio\source.cpp" />
     <ClCompile Include="game\bluepoint\bp_pakfile.cpp" />
     <ClCompile Include="game\bsp\bsp.cpp" />
     <ClCompile Include="game\model\sourcemodel.cpp" />
@@ -252,6 +269,7 @@
     <ClCompile Include="game\rtech\utils\studio\studio_r2.cpp" />
     <ClCompile Include="game\rtech\utils\studio\studio_r5.cpp" />
     <ClCompile Include="game\rtech\utils\utils.cpp" />
+    <ClCompile Include="game\vpk\vpk.cpp" />
     <ClCompile Include="pch.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
@@ -300,6 +318,24 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="thirdparty\imgui\implot\implot.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="thirdparty\imgui\implot\implot_demo.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="thirdparty\imgui\implot\implot_items.cpp">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="thirdparty\imgui\misc\cpp\imgui_stdlib.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>
@@ -328,6 +364,12 @@
     </ClCompile>
     <ClCompile Include="thirdparty\imgui\misc\imgui_utility.cpp" />
     <ClCompile Include="thirdparty\miniaudio\miniaudio.c">
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="thirdparty\rad_lzb_simple\rad_lzb_simple.c">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_NoGui|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release_CI|x64'">NotUsing</PrecompiledHeader>

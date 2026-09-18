@@ -62,6 +62,11 @@ public:
 
 	Vector CoordTranspose() const { return { x,z,y }; };
 
+	static Vector Lerp(const Vector& a, const Vector& b, const float frac)
+	{
+		return a + ((b - a) * frac);
+	};
+
 #ifdef MATH_USE_DX
 	inline XMVECTOR AsXMVector() const { return XMVECTOR{ x,y,z }; };
 #endif // DirectXMath
